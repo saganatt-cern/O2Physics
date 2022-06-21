@@ -18,6 +18,7 @@
 
 // todo: remove reduantant information in GammaConversionsInfoTrue
 #include "PWGEM/PhotonMeson/DataModel/gammaTables.h"
+#include "PWGEM/PhotonMeson/Utils/gammaConvDefinitions.h"
 
 #include "TVector3.h"
 
@@ -32,14 +33,13 @@ using namespace o2::framework::expressions;
 struct skimmerGammaConversionsTruthOnlyMc {
 
   Produces<aod::McGammasTrue> fFuncTableMcGammas;
-  Produces<aod::McGammaDaughtersTrue> fFuncTableMcGammaDaughters;
 
   HistogramRegistry registry{
     "registry",
     {
-      {"hCollisionZ_MCRec", "hCollisionZ_MCRec", {HistType::kTH1F, {{800, -50.f, 50.f}}}},
-      {"hCollisionZ_all_MCTrue", "hCollisionZ_all_MCTrue", {HistType::kTH1F, {{800, -50.f, 50.f}}}},
-      {"hCollisionZ_MCTrue", "hCollisionZ_MCTrue", {HistType::kTH1F, {{800, -50.f, 50.f}}}},
+      gHistoSpec_hCollisionZ_all_MCTrue,
+      gHistoSpec_hCollisionZ_MCTrue,
+      gHistoSpec_hCollisionZ_MCRec,
       {"hMcParticlesSize", "hMcParticlesSize", {HistType::kTH1F, {{100, 0.f, 1000000.f}}}},
       {"hEtaDiff", "hEtaDiff", {HistType::kTH1F, {{400, -2.f, 2.f}}}},
     },
@@ -78,22 +78,6 @@ struct skimmerGammaConversionsTruthOnlyMc {
           lDaughter0Vy = lDaughter0.vy();
           lDaughter0Vz = lDaughter0.vz();
           lV0Radius = sqrt(pow(lDaughter0Vx, 2) + pow(lDaughter0Vy, 2));
-
-          for (auto& lDaughter : lMcParticle.daughters_as<aod::McParticles>()) {
-
-            // SFS this can be removed once the eta integrity is checked
-            TVector3 lDaughterVtx(lDaughter.vx(), lDaughter.vy(), lDaughter.vz());
-            if (lMcParticle.isPhysicalPrimary()) {
-              float_t lEtaDiff = lDaughterVtx.Eta() - lMcParticle.eta();
-              registry.fill(HIST("hEtaDiff"), lEtaDiff);
-            }
-            fFuncTableMcGammaDaughters(lDaughter.mcCollisionId(),
-                                       lMcParticle.globalIndex(),
-                                       lDaughter.mothersIds().size(),
-                                       lDaughter.pdgCode(), lDaughter.statusCode(), lDaughter.flags(),
-                                       lDaughter.px(), lDaughter.py(), lDaughter.pz(), lDaughter.e(),
-                                       lDaughter.vx(), lDaughter.vy(), lDaughter.vz(), lDaughter.vt());
-          }
         }
         fFuncTableMcGammas(
           lMcParticle.mcCollisionId(),
