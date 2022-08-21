@@ -445,7 +445,7 @@ struct HfTaskFlow {
       if (processTPCTPChh) {
         registry.fill(HIST("hEventCountMixing"), bin);
         fillMixingQA(multiplicity, vz, tracks1);
-      } else if (processHFHadrons){
+      } else if (processHFHadrons) {
         registry.fill(HIST("hEventCountHFMixing"), bin);
         fillHFMixingQA(multiplicity, vz, tracks1);
       }
