@@ -38,6 +38,8 @@
 #include <cmath>
 #include <TDirectory.h>
 #include <THn.h>
+#include <ctime>
+#include <iomanip>
 
 using namespace o2;
 using namespace o2::framework;
@@ -48,6 +50,15 @@ using namespace o2::aod::hf_cand_2prong;
 using namespace o2::analysis::hf_cuts_d0_to_pi_k;
 
 struct HfTaskFlow {
+  //  configurables for CCDB
+  Service<ccdb::BasicCCDBManager> ccdb;
+  Configurable<std::string> path{"ccdb-path", "Users/k/kgajdoso/efficiency", "base path to the ccdb object"};
+  Configurable<std::string> url{"ccdb-url", "http://ccdb-test.cern.ch", "url of the ccdb repository"};
+  Configurable<std::string> date{"ccdb-date", "20221010", "date of the ccdb file"};
+
+  //  CCDB HISTOGRAMS
+  TH1F* hTestEfficiency = nullptr;
+
   //  configurables for processing options
   Configurable<bool> processRun2{"processRun2", "false", "Flag to run on Run 2 data"};
   Configurable<bool> processRun3{"processRun3", "true", "Flag to run on Run 3 data"};
@@ -108,6 +119,17 @@ struct HfTaskFlow {
   //  =========================
   void init(o2::framework::InitContext&)
   {
+    //  CCDB settings
+    ccdb->setURL(url.value);
+    // Enabling object caching, otherwise each call goes to the CCDB server
+    ccdb->setCaching(true);
+    ccdb->setLocalObjectValidityChecking();
+    //  put the date (date of creation of the efficiency file in CCDB) in a correct timestamp format
+    std::tm cfgtm = {};
+    std::stringstream ss(date.value); ss >> std::get_time(&cfgtm, "%Y%m%d");
+    cfgtm.tm_hour = 12;
+    long timestamp = std::mktime(&cfgtm) * 1000;
+    
     //  EVENT HISTOGRAMS
     registry.add("hEventCounter", "hEventCounter", {HistType::kTH1F, {{3, 0.5, 3.5}}});
     //  set axes of the event counter histogram
@@ -191,11 +213,19 @@ struct HfTaskFlow {
                                      {axisVertexEfficiency, "z-vtx (cm)"}};
     std::vector<AxisSpec> userAxis = {{axisMass, "m_{inv} (GeV/c^{2})"}};
 
+    //  EFFICIENCY histograms
+    registry.add("hEfficiency", "efficiency; pT", {HistType::kTProfile, {{axisPtTrigger}}});
+
+    //  CORRELATION CONTAINERS
     sameTPCTPCCh.setObject(new CorrelationContainer("sameEventTPCTPCChHadrons", "sameEventTPCTPCChHadrons", corrAxis, effAxis, {}));
     sameTPCMFTCh.setObject(new CorrelationContainer("sameEventTPCMFTChHadrons", "sameEventTPCMFTChHadrons", corrAxis, effAxis, {}));
     sameHF.setObject(new CorrelationContainer("sameEventHFHadrons", "sameEventHFHadrons", corrAxis, effAxis, userAxis));
     mixedTPCTPCCh.setObject(new CorrelationContainer("mixedEventTPCTPCChHadrons", "mixedEventTPCTPCChHadrons", corrAxis, effAxis, {}));
     mixedHF.setObject(new CorrelationContainer("mixedEventHFHadrons", "mixedEventHFHadrons", corrAxis, effAxis, userAxis));
+
+    //  get efficiency from CCDB
+    TList* list = ccdb->getForTimeStamp<TList>(path.value, timestamp);
+    hTestEfficiency = (TH1F*)list->FindObject("efficiency");
   }
 
   //  ---------------
@@ -357,6 +387,8 @@ struct HfTaskFlow {
       o2::math_utils::bringTo02Pi(phi1);
 
       //  TODO: add getter for NUE trigger efficiency here
+      double efficiency = hTestEfficiency->GetBinContent(hTestEfficiency->FindBin(track1.pt()));
+      registry.fill(HIST("hEfficiency"), track1.pt(), efficiency);
 
       //  calculating inv. mass to be filled into the container below
       //  Note: this is needed only in case of HF-hadron correlations
