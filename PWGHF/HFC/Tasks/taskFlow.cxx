@@ -373,11 +373,24 @@ struct HfTaskFlow {
     }
   }
 
-  template <typename TTarget, typename TTracksTrig, typename TTracksAssoc>
+  template <CorrelationContainer::CFStep step, typename TTarget, typename TTracksTrig, typename TTracksAssoc>
   void fillCorrelations(TTarget target, TTracksTrig tracks1, TTracksAssoc tracks2, float multiplicity, float posZ)
   {
-    auto triggerWeight = 1;
-    auto associatedWeight = 1;
+    float triggerWeight = 1;
+    float associatedWeight = 1;
+
+    //  cache efficiency, because every time we get efficiency from the multi-dimensional histogram,
+    //  we have to find a corresponding bin of pT, eta, etc., and this would be done within the nested loops
+    float* associatedEfficiency = nullptr;
+    if constexpr (step == CorrelationContainer::kCFStepCorrected) {
+      if (hTestEfficiency) {
+        associatedEfficiency = new float[tracks2.size()];
+        int i = 0;
+        for (auto& track : tracks2) {
+          associatedEfficiency[i++] = getEfficiency(hTestEfficiency, track.pt());
+        }
+      }
+    }
 
     for (auto& track1 : tracks1) {
 
@@ -385,10 +398,6 @@ struct HfTaskFlow {
       float pt1 = track1.pt();
       float phi1 = track1.phi();
       o2::math_utils::bringTo02Pi(phi1);
-
-      //  TODO: add getter for NUE trigger efficiency here
-      double efficiency = hTestEfficiency->GetBinContent(hTestEfficiency->FindBin(track1.pt()));
-      registry.fill(HIST("hEfficiency"), track1.pt(), efficiency);
 
       //  calculating inv. mass to be filled into the container below
       //  Note: this is needed only in case of HF-hadron correlations
@@ -403,11 +412,19 @@ struct HfTaskFlow {
         invmass = invMassD0ToPiK(track1);
       }
 
+      //  TODO: add getter for trigger efficiency here
+      if constexpr (step == CorrelationContainer::kCFStepCorrected) {
+        if (hTestEfficiency) { // change this to specific trigger efficiency histogram
+          triggerWeight = 1./getEfficiency(hTestEfficiency, track1.pt());
+          registry.fill(HIST("hEfficiency"), track1.pt(), 1./triggerWeight);
+        }
+      }
+
       //  fill single-track distributions
       if (!fillingHFcontainer) {
-        target->getTriggerHist()->Fill(CorrelationContainer::kCFStepReconstructed, pt1, multiplicity, posZ, triggerWeight);
+        target->getTriggerHist()->Fill(step, pt1, multiplicity, posZ, triggerWeight);
       } else {
-        target->getTriggerHist()->Fill(CorrelationContainer::kCFStepReconstructed, pt1, multiplicity, posZ, invmass, triggerWeight);
+        target->getTriggerHist()->Fill(step, pt1, multiplicity, posZ, invmass, triggerWeight);
       }
 
       for (auto& track2 : tracks2) {
@@ -433,9 +450,14 @@ struct HfTaskFlow {
         float phi2 = track2.phi();
         o2::math_utils::bringTo02Pi(phi2);
 
-        //  TODO: add getter for NUE associated efficiency here
-
         //  TODO: add pair cuts on phi*
+
+        //  TODO: add getter for associated efficiency here
+        if constexpr (step == CorrelationContainer::kCFStepCorrected) {
+          if (hTestEfficiency) {
+            associatedWeight = 1./associatedEfficiency[track2.filteredIndex()];
+          }
+        }
 
         float deltaPhi = phi1 - phi2;
         //  set range of delta phi in (-pi/2 , 3/2*pi)
@@ -443,11 +465,11 @@ struct HfTaskFlow {
 
         if (!fillingHFcontainer) {
           //  fill pair correlations
-          target->getPairHist()->Fill(CorrelationContainer::kCFStepReconstructed,
+          target->getPairHist()->Fill(step,
                                       eta1 - eta2, pt2, pt1, multiplicity, deltaPhi, posZ,
                                       triggerWeight * associatedWeight);
         } else {
-          target->getPairHist()->Fill(CorrelationContainer::kCFStepReconstructed,
+          target->getPairHist()->Fill(step,
                                       eta1 - eta2, pt2, pt1, multiplicity, deltaPhi, posZ, invmass,
                                       triggerWeight * associatedWeight);
         }
@@ -488,8 +510,20 @@ struct HfTaskFlow {
       }
 
       corrContainer->fillEvent(multiplicity, CorrelationContainer::kCFStepReconstructed);
-      fillCorrelations(corrContainer, tracks1, tracks2, multiplicity, collision1.posZ());
+      //  fill raw correlations
+      fillCorrelations<CorrelationContainer::kCFStepReconstructed>(corrContainer, tracks1, tracks2, multiplicity, collision1.posZ());
+      //  TODO fill corrected correlations
     }
+  }
+
+  // =====================================
+  //    get efficiency
+  // =====================================
+  double getEfficiency(TH1F* hEfficiency, float pt)
+  {
+    double efficiency;
+    efficiency = hEfficiency->GetBinContent(hEfficiency->FindBin(pt));
+    return efficiency;
   }
 
   // =====================================
@@ -517,7 +551,12 @@ struct HfTaskFlow {
 
     sameTPCTPCCh->fillEvent(multiplicity, CorrelationContainer::kCFStepReconstructed);
     fillQA(multiplicity, tracks);
-    fillCorrelations(sameTPCTPCCh, tracks, tracks, multiplicity, collision.posZ());
+    //  fill raw correlations
+    fillCorrelations<CorrelationContainer::kCFStepReconstructed>(sameTPCTPCCh, tracks, tracks, multiplicity, collision.posZ());
+    //  fill corrected correlations
+    if (hTestEfficiency) {
+      fillCorrelations<CorrelationContainer::kCFStepCorrected>(sameTPCTPCCh, tracks, tracks, multiplicity, collision.posZ());
+    }
   }
   PROCESS_SWITCH(HfTaskFlow, processSameTpcTpcHH, "Process same-event correlations for h-h case", true);
 
@@ -536,7 +575,12 @@ struct HfTaskFlow {
 
     sameHF->fillEvent(multiplicity, CorrelationContainer::kCFStepReconstructed);
     fillCandidateQA(candidates);
-    fillCorrelations(sameHF, candidates, tracks, multiplicity, collision.posZ());
+    //  fill raw correlations
+    fillCorrelations<CorrelationContainer::kCFStepReconstructed>(sameHF, candidates, tracks, multiplicity, collision.posZ());
+    //  fill corrected correlations
+    if (hTestEfficiency) {
+      fillCorrelations<CorrelationContainer::kCFStepCorrected>(sameHF, candidates, tracks, multiplicity, collision.posZ());
+    }
   }
   PROCESS_SWITCH(HfTaskFlow, processSameHfHadrons, "Process same-event correlations for HF-h case", true);
 
@@ -555,7 +599,7 @@ struct HfTaskFlow {
 
     sameTPCMFTCh->fillEvent(multiplicity, CorrelationContainer::kCFStepReconstructed);
     fillMFTQA(multiplicity, mfttracks);
-    fillCorrelations(sameTPCMFTCh, tracks, mfttracks, multiplicity, collision.posZ());
+    fillCorrelations<CorrelationContainer::kCFStepReconstructed>(sameTPCMFTCh, tracks, mfttracks, multiplicity, collision.posZ());
   }
   PROCESS_SWITCH(HfTaskFlow, processSameTpcMftHH, "Process same-event correlations for h-MFT case", true);
 
