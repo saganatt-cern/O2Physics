@@ -54,10 +54,10 @@ struct HfTaskFlow {
   Service<ccdb::BasicCCDBManager> ccdb;
   Configurable<std::string> path{"ccdb-path", "Users/k/kgajdoso/efficiency", "base path to the ccdb object"};
   Configurable<std::string> url{"ccdb-url", "http://ccdb-test.cern.ch", "url of the ccdb repository"};
-  Configurable<std::string> date{"ccdb-date", "20221010", "date of the ccdb file"};
+  Configurable<std::string> date{"ccdb-date", "20221025", "date of the ccdb file"};
 
   //  CCDB HISTOGRAMS
-  TH1F* hTestEfficiency = nullptr;
+  THn* hTestEfficiency = nullptr;
 
   //  configurables for processing options
   Configurable<bool> processRun2{"processRun2", "false", "Flag to run on Run 2 data"};
@@ -214,7 +214,7 @@ struct HfTaskFlow {
     std::vector<AxisSpec> userAxis = {{axisMass, "m_{inv} (GeV/c^{2})"}};
 
     //  EFFICIENCY histograms
-    registry.add("hEfficiency", "efficiency; pT", {HistType::kTProfile, {{axisPtTrigger}}});
+    registry.add("hEfficiency", "efficiency; pT", {HistType::kTProfile, {{axisPtEfficiency}}});
 
     //  CORRELATION CONTAINERS
     sameTPCTPCCh.setObject(new CorrelationContainer("sameEventTPCTPCChHadrons", "sameEventTPCTPCChHadrons", corrAxis, effAxis, {}));
@@ -225,7 +225,7 @@ struct HfTaskFlow {
 
     //  get efficiency from CCDB
     TList* list = ccdb->getForTimeStamp<TList>(path.value, timestamp);
-    hTestEfficiency = (TH1F*)list->FindObject("efficiency");
+    hTestEfficiency = (THn*)list->FindObject("efficiency");
   }
 
   //  ---------------
@@ -387,7 +387,7 @@ struct HfTaskFlow {
         associatedEfficiency = new float[tracks2.size()];
         int i = 0;
         for (auto& track : tracks2) {
-          associatedEfficiency[i++] = getEfficiency(hTestEfficiency, track.pt());
+          associatedEfficiency[i++] = getEfficiency(hTestEfficiency, track.eta(), track.pt(), multiplicity, posZ);
         }
       }
     }
@@ -415,8 +415,12 @@ struct HfTaskFlow {
       //  TODO: add getter for trigger efficiency here
       if constexpr (step == CorrelationContainer::kCFStepCorrected) {
         if (hTestEfficiency) { // change this to specific trigger efficiency histogram
-          triggerWeight = 1./getEfficiency(hTestEfficiency, track1.pt());
-          registry.fill(HIST("hEfficiency"), track1.pt(), 1./triggerWeight);
+          float trigEff = getEfficiency(hTestEfficiency, track1.eta(), track1.pt(), multiplicity, posZ);
+          if (trigEff == 0) {
+            trigEff = 1;
+          }
+          triggerWeight = 1./trigEff;
+          registry.fill(HIST("hEfficiency"), track1.pt(), 1./triggerWeight); // TODO: remove this, it is just a crosscheck to see if I get efficiency back
         }
       }
 
@@ -519,10 +523,16 @@ struct HfTaskFlow {
   // =====================================
   //    get efficiency
   // =====================================
-  double getEfficiency(TH1F* hEfficiency, float pt)
+  double getEfficiency(THn* hEfficiency, float eta, float pt, float multiplicity, float posZ)
   {
     double efficiency;
-    efficiency = hEfficiency->GetBinContent(hEfficiency->FindBin(pt));
+    //efficiency = hEfficiency->GetBinContent(hEfficiency->FindBin(pt));
+    int effVariables[4];
+    effVariables[0] = hEfficiency->GetAxis(0)->FindBin(eta);
+    effVariables[1] = hEfficiency->GetAxis(1)->FindBin(pt);
+    effVariables[2] = hEfficiency->GetAxis(2)->FindBin(multiplicity);
+    effVariables[3] = hEfficiency->GetAxis(3)->FindBin(posZ);
+    efficiency = hEfficiency->GetBinContent(effVariables);
     return efficiency;
   }
 
