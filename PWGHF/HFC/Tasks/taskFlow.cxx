@@ -56,9 +56,13 @@ struct HfTaskFlow {
   Configurable<std::string> url{"ccdb-url", "http://ccdb-test.cern.ch", "url of the ccdb repository"};
   Configurable<std::string> date{"ccdb-date", "20221025", "date of the ccdb file"};
 
-  //  CCDB HISTOGRAMS
-  THn* hTestEfficiency = nullptr;
+  //  EFFICIENCY
+  TList* listEfficiency = nullptr;
+  THn* hEfficiencyTrig = nullptr;
+  THn* hEfficiencyAssoc = nullptr;
+  bool isEfficiencyLoaded = false;
 
+  //  PHYSICS PLOTS
   //  configurables for processing options
   Configurable<bool> processRun2{"processRun2", "false", "Flag to run on Run 2 data"};
   Configurable<bool> processRun3{"processRun3", "true", "Flag to run on Run 3 data"};
@@ -78,13 +82,13 @@ struct HfTaskFlow {
   //  Collision filters
   //  FIXME: The filter is applied also on the candidates! Beware!
   Filter collisionVtxZFilter = nabs(aod::collision::posZ) < zVertexMax;
-  using aodCollisions = soa::Filtered<soa::Join<aod::Collisions, aod::EvSels, aod::Mults>>;
+  using aodCollisions = soa::Filtered<soa::Join<aod::Collisions, aod::EvSels, aod::Mults, aod::McCollisionLabels>>;
 
   //  Charged track filters
   Filter trackFilter = (nabs(aod::track::eta) < etaTrackAssocMax) &&
                        (aod::track::pt > ptTrackAssocMin) &&
                        requireGlobalTrackWoPtEtaInFilter();
-  using aodTracks = soa::Filtered<soa::Join<aod::Tracks, aod::TracksDCA, aod::TrackSelection>>;
+  using aodTracks = soa::Filtered<soa::Join<aod::Tracks, aod::TracksDCA, aod::TrackSelection, aod::McTrackLabels>>;
 
   //  HF candidate filter
   //  TODO: use Partition instead of filter
@@ -130,6 +134,9 @@ struct HfTaskFlow {
     cfgtm.tm_hour = 12;
     long timestamp = std::mktime(&cfgtm) * 1000;
     
+    //  get efficiency from CCDB
+    listEfficiency = ccdb->getForTimeStamp<TList>(path.value, timestamp);
+
     //  EVENT HISTOGRAMS
     registry.add("hEventCounter", "hEventCounter", {HistType::kTH1F, {{3, 0.5, 3.5}}});
     //  set axes of the event counter histogram
@@ -214,7 +221,8 @@ struct HfTaskFlow {
     std::vector<AxisSpec> userAxis = {{axisMass, "m_{inv} (GeV/c^{2})"}};
 
     //  EFFICIENCY histograms
-    registry.add("hEfficiency", "efficiency; pT", {HistType::kTProfile, {{axisPtEfficiency}}});
+    registry.add("hEffTrigCheck", "efficiency; pT", {HistType::kTProfile, {{axisPtEfficiency}}});
+    registry.add("hEffAssocCheck", "efficiency; pT", {HistType::kTProfile, {{axisPtEfficiency}}});
 
     //  CORRELATION CONTAINERS
     sameTPCTPCCh.setObject(new CorrelationContainer("sameEventTPCTPCChHadrons", "sameEventTPCTPCChHadrons", corrAxis, effAxis, {}));
@@ -223,9 +231,6 @@ struct HfTaskFlow {
     mixedTPCTPCCh.setObject(new CorrelationContainer("mixedEventTPCTPCChHadrons", "mixedEventTPCTPCChHadrons", corrAxis, effAxis, {}));
     mixedHF.setObject(new CorrelationContainer("mixedEventHFHadrons", "mixedEventHFHadrons", corrAxis, effAxis, userAxis));
 
-    //  get efficiency from CCDB
-    TList* list = ccdb->getForTimeStamp<TList>(path.value, timestamp);
-    hTestEfficiency = (THn*)list->FindObject("efficiency");
   }
 
   //  ---------------
@@ -383,11 +388,11 @@ struct HfTaskFlow {
     //  we have to find a corresponding bin of pT, eta, etc., and this would be done within the nested loops
     float* associatedEfficiency = nullptr;
     if constexpr (step == CorrelationContainer::kCFStepCorrected) {
-      if (hTestEfficiency) {
+      if (hEfficiencyAssoc) {
         associatedEfficiency = new float[tracks2.size()];
         int i = 0;
         for (auto& track : tracks2) {
-          associatedEfficiency[i++] = getEfficiency(hTestEfficiency, track.eta(), track.pt(), multiplicity, posZ);
+          associatedEfficiency[i++] = getEfficiency(hEfficiencyAssoc, track.eta(), track.pt(), multiplicity, posZ);
         }
       }
     }
@@ -414,13 +419,14 @@ struct HfTaskFlow {
 
       //  TODO: add getter for trigger efficiency here
       if constexpr (step == CorrelationContainer::kCFStepCorrected) {
-        if (hTestEfficiency) { // change this to specific trigger efficiency histogram
-          float trigEff = getEfficiency(hTestEfficiency, track1.eta(), track1.pt(), multiplicity, posZ);
+        if (hEfficiencyTrig) { // change this to specific trigger efficiency histogram
+          float trigEff = getEfficiency(hEfficiencyTrig, track1.eta(), track1.pt(), multiplicity, posZ);
           if (trigEff == 0) {
+            printf("I have 0 efficiency \n");
             trigEff = 1;
           }
           triggerWeight = 1./trigEff;
-          registry.fill(HIST("hEfficiency"), track1.pt(), 1./triggerWeight); // TODO: remove this, it is just a crosscheck to see if I get efficiency back
+          registry.fill(HIST("hEffTrigCheck"), track1.pt(), 1./triggerWeight); // TODO: remove this, it is just a crosscheck to see if I get efficiency back
         }
       }
 
@@ -458,8 +464,9 @@ struct HfTaskFlow {
 
         //  TODO: add getter for associated efficiency here
         if constexpr (step == CorrelationContainer::kCFStepCorrected) {
-          if (hTestEfficiency) {
+          if (hEfficiencyAssoc) {
             associatedWeight = 1./associatedEfficiency[track2.filteredIndex()];
+            registry.fill(HIST("hEffAssocCheck"), track2.pt(), 1./associatedWeight); // TODO: remove this, it is just a crosscheck to see if I get efficiency back
           }
         }
 
@@ -513,8 +520,8 @@ struct HfTaskFlow {
         fillMixingQA(multiplicity, vz, tracks1);
       }
 
-      corrContainer->fillEvent(multiplicity, CorrelationContainer::kCFStepReconstructed);
       //  fill raw correlations
+      corrContainer->fillEvent(multiplicity, CorrelationContainer::kCFStepReconstructed);
       fillCorrelations<CorrelationContainer::kCFStepReconstructed>(corrContainer, tracks1, tracks2, multiplicity, collision1.posZ());
       //  TODO fill corrected correlations
     }
@@ -523,6 +530,27 @@ struct HfTaskFlow {
   // =====================================
   //    get efficiency
   // =====================================
+  void loadEfficiency(std::string prefixTrig, std::string prefixAssoc)
+  {
+    if (isEfficiencyLoaded) { // we don't need to load efficiency every time a process() is called
+      return;
+    }
+    if (path.value.empty() == false) { // ccdb path to efficiency histograms
+      hEfficiencyTrig = (THn*)listEfficiency->FindObject(Form("%sefficiency", prefixTrig.c_str()));
+      if (hEfficiencyTrig == nullptr) {
+        LOGF(fatal, "Could not load efficiency histogram for trigger particles from %s", path.value.c_str());
+      }
+      LOGF(info, "Loaded efficiency histogram for trigger particles from %s", path.value.c_str());
+
+      hEfficiencyAssoc = (THn*)listEfficiency->FindObject(Form("%sefficiency", prefixAssoc.c_str()));
+      if (hEfficiencyAssoc == nullptr) {
+        LOGF(fatal, "Could not load efficiency histogram for associated particles from %s", path.value.c_str());
+      }
+      LOGF(info, "Loaded efficiency histogram for associated particles from %s", path.value.c_str());
+    }
+    isEfficiencyLoaded = true;
+  }
+
   double getEfficiency(THn* hEfficiency, float eta, float pt, float multiplicity, float posZ)
   {
     double efficiency;
@@ -559,12 +587,15 @@ struct HfTaskFlow {
     int bin = baseBinning.getBin(std::make_tuple(collision.posZ(), multiplicity));
     registry.fill(HIST("hEventCountSame"), bin);
 
-    sameTPCTPCCh->fillEvent(multiplicity, CorrelationContainer::kCFStepReconstructed);
+    loadEfficiency("", "");
+
     fillQA(multiplicity, tracks);
     //  fill raw correlations
+    sameTPCTPCCh->fillEvent(multiplicity, CorrelationContainer::kCFStepReconstructed);
     fillCorrelations<CorrelationContainer::kCFStepReconstructed>(sameTPCTPCCh, tracks, tracks, multiplicity, collision.posZ());
     //  fill corrected correlations
-    if (hTestEfficiency) {
+    if (hEfficiencyTrig || hEfficiencyAssoc) {
+      sameTPCTPCCh->fillEvent(multiplicity, CorrelationContainer::kCFStepCorrected);
       fillCorrelations<CorrelationContainer::kCFStepCorrected>(sameTPCTPCCh, tracks, tracks, multiplicity, collision.posZ());
     }
   }
@@ -583,12 +614,15 @@ struct HfTaskFlow {
 
     const auto multiplicity = tracks.size();
 
-    sameHF->fillEvent(multiplicity, CorrelationContainer::kCFStepReconstructed);
+    loadEfficiency("HF", "");
+
     fillCandidateQA(candidates);
     //  fill raw correlations
+    sameHF->fillEvent(multiplicity, CorrelationContainer::kCFStepReconstructed);
     fillCorrelations<CorrelationContainer::kCFStepReconstructed>(sameHF, candidates, tracks, multiplicity, collision.posZ());
     //  fill corrected correlations
-    if (hTestEfficiency) {
+    if (hEfficiencyTrig || hEfficiencyAssoc) {
+      sameHF->fillEvent(multiplicity, CorrelationContainer::kCFStepCorrected);
       fillCorrelations<CorrelationContainer::kCFStepCorrected>(sameHF, candidates, tracks, multiplicity, collision.posZ());
     }
   }
@@ -632,7 +666,7 @@ struct HfTaskFlow {
   PROCESS_SWITCH(HfTaskFlow, processMixedTpcTpcHH, "Process mixed-event correlations for h-h case", true);
 
   // =====================================
-  //    process mixed event correlations: h-h case
+  //    process mixed event correlations: HF-h case
   // =====================================
   void processMixedHfHadrons(aodCollisions& collisions,
                              aodTracks& tracks,
