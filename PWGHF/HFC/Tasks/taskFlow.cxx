@@ -456,7 +456,7 @@ struct HfTaskFlow {
 
     for (auto& track1 : tracks1) {
 
-      //  in case of MC, check the properties of McParticles depending on the CFstep: all, only primary, etc
+        //  in case of MC-generated, do additional selection on MCparticles : charge and isPhysicalPrimary
       if constexpr (step <= CorrelationContainer::kCFStepTracked) {
         if (!isMcParticleSelected<step>(track1)) {
           continue;
@@ -518,14 +518,14 @@ struct HfTaskFlow {
             continue;
           }
         }
-/*
-        //  in case of MC, check the properties of McParticles depending on the CFstep: all, only primary, etc
+
+        //  in case of MC-generated, do additional selection on MCparticles : charge and isPhysicalPrimary
         if constexpr (step <= CorrelationContainer::kCFStepTracked) {
           if (!isMcParticleSelected<step>(track2)) {
             continue;
           }
         }
-*/
+
         float eta2 = track2.eta();
         float pt2 = track2.pt();
         float phi2 = track2.phi();
