@@ -50,6 +50,8 @@ using namespace o2::aod::hf_cand_2prong;
 using namespace o2::analysis::hf_cuts_d0_to_pi_k;
 
 struct HfTaskFlow {
+  Service<TDatabasePDG> pdg;
+
   //  configurables for CCDB
   Service<ccdb::BasicCCDBManager> ccdb;
   Configurable<std::string> path{"ccdb-path", "Users/k/kgajdoso/efficiency", "base path to the ccdb object"};
@@ -117,6 +119,16 @@ struct HfTaskFlow {
   OutputObj<CorrelationContainer> sameHF{"sameEventHFHadrons"};
   OutputObj<CorrelationContainer> mixedTPCTPCCh{"mixedEventTPCTPCChHadrons"};
   OutputObj<CorrelationContainer> mixedHF{"mixedEventHFHadrons"};
+
+  //  MC collision filters
+  Filter mcCollisionFilter = nabs(aod::mccollision::posZ) < cfgCutVertex;
+  using aodMcCollisions = soa::Filtered<aod::McCollisions>;
+
+  //  MC particle filters
+  Filter mcParticlesFilter = (nabs(aod::mcparticle::eta) < cfgCutEta) &&
+                             (aod::mcparticle::pt > cfgCutPt); //&&
+                             //(aod::mcparticle::sign != 0)
+  using aodMcParticles = soa::Filtered<aod::McParticles>;
 
   //  =========================
   //      init()
@@ -223,6 +235,14 @@ struct HfTaskFlow {
     //  EFFICIENCY histograms
     registry.add("hEffTrigCheck", "efficiency; pT", {HistType::kTProfile, {{axisPtEfficiency}}});
     registry.add("hEffAssocCheck", "efficiency; pT", {HistType::kTProfile, {{axisPtEfficiency}}});
+
+    //  MC histograms
+    registry.add("hMCVtxZ", "hMCVtxZ", {HistType::kTH1F, {{400, -50, 50}}});
+    registry.add("hMCMultiplicity", "hMCMultiplicity", {HistType::kTH1F, {{500, 0, 500}}});
+    registry.add("hMCMultiplicityPrimary", "hMCMultiplicityPrimary", {HistType::kTH1F, {{500, 0, 500}}});
+    registry.add("hMCPt", "pT", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
+    registry.add("hMCEta", "eta", {HistType::kTH1F, {{100, -4, 4, "#eta"}}});
+    registry.add("hMCPhi", "phi", {HistType::kTH1F, {{100, 0, 2 * PI, "#varphi"}}});
 
     //  CORRELATION CONTAINERS
     sameTPCTPCCh.setObject(new CorrelationContainer("sameEventTPCTPCChHadrons", "sameEventTPCTPCChHadrons", corrAxis, effAxis, {}));
@@ -378,6 +398,43 @@ struct HfTaskFlow {
     }
   }
 
+  template <CorrelationContainer::CFStep step, typename TTrack>
+  bool isMcParticleSelected(TTrack& track) // Note: these are actually MC particles
+  {
+    //  remove MC particles with charge = 0
+    int8_t sign = 0;
+    TParticlePDG* pdgparticle = pdg->GetParticle(track.pdgCode());
+    if (pdgparticle != nullptr) {
+      sign = (pdgparticle->Charge() > 0) ? 1.0 : ((pdgparticle->Charge() < 0) ? -1.0 : 0.0);
+    }
+    if (sign == 0) {
+      return false;
+    }
+
+    //  MC particle has to be primary
+    if constexpr (step <= CorrelationContainer::kCFStepAnaTopology) {
+      return track.isPhysicalPrimary();
+    }
+
+    return true;
+  }
+
+  template <CorrelationContainer::CFStep step, typename TTracks>
+  void fillMcParticleQA(TTracks mcparticles)
+  {
+    int Nparticles = 0;
+    for (auto& mcparticle : mcparticles) {
+      if (!isMcParticleSelected<step>(mcparticle)) {
+        continue;
+      }
+      Nparticles++;
+      registry.fill(HIST("hMCPt"), mcparticle.pt());
+      registry.fill(HIST("hMCEta"), mcparticle.eta());
+      registry.fill(HIST("hMCPhi"), mcparticle.phi());
+    }
+    registry.fill(HIST("hMCMultiplicityPrimary"), Nparticles);
+  }
+
   template <CorrelationContainer::CFStep step, typename TTarget, typename TTracksTrig, typename TTracksAssoc>
   void fillCorrelations(TTarget target, TTracksTrig tracks1, TTracksAssoc tracks2, float multiplicity, float posZ)
   {
@@ -398,6 +455,13 @@ struct HfTaskFlow {
     }
 
     for (auto& track1 : tracks1) {
+
+      //  in case of MC, check the properties of McParticles depending on the CFstep: all, only primary, etc
+      if constexpr (step <= CorrelationContainer::kCFStepTracked) {
+        if (!isMcParticleSelected<step>(track1)) {
+          continue;
+        }
+      }
 
       float eta1 = track1.eta();
       float pt1 = track1.pt();
@@ -454,7 +518,14 @@ struct HfTaskFlow {
             continue;
           }
         }
-
+/*
+        //  in case of MC, check the properties of McParticles depending on the CFstep: all, only primary, etc
+        if constexpr (step <= CorrelationContainer::kCFStepTracked) {
+          if (!isMcParticleSelected<step>(track2)) {
+            continue;
+          }
+        }
+*/
         float eta2 = track2.eta();
         float pt2 = track2.pt();
         float phi2 = track2.phi();
@@ -682,6 +753,33 @@ struct HfTaskFlow {
     mixCollisions(collisions, candidates, tracks, getTracksSize, mixedHF);
   }
   PROCESS_SWITCH(HfTaskFlow, processMixedHfHadrons, "Process mixed-event correlations for HF-h case", true);
+
+  // =====================================
+  //    process same event MC correlations: h-h case
+  // =====================================
+  void processMCSameTPCTPChh(aodMcCollisions::iterator const& mcCollision,
+                             aodMcParticles const& mcParticles,
+                             aodCollisions const& collisions)
+  {
+    const auto multiplicity = mcParticles.size(); // Note: these are all MC particles after selection (not only primary)
+    registry.fill(HIST("hMCVtxZ"), mcCollision.posZ());
+    registry.fill(HIST("hMCMultiplicity"), multiplicity);
+
+    //  fill correlations for all MC collisions
+    sameTPCTPCCh->fillEvent(multiplicity, CorrelationContainer::kCFStepAll);
+    fillCorrelations<CorrelationContainer::kCFStepAll>(sameTPCTPCCh, mcParticles, mcParticles, multiplicity, mcCollision.posZ());
+
+    if (collisions.size() == 0) {
+      return;
+    }
+
+    //  fill correlations for MC collisions that have a reconstructed collision
+    fillMcParticleQA<CorrelationContainer::kCFStepVertex>(mcParticles);
+    sameTPCTPCCh->fillEvent(multiplicity, CorrelationContainer::kCFStepVertex);
+    fillCorrelations<CorrelationContainer::kCFStepVertex>(sameTPCTPCCh, mcParticles, mcParticles, multiplicity, mcCollision.posZ());
+  }
+  PROCESS_SWITCH(HfTaskFlow, processMCSameTPCTPChh, "Process MC-gen level same-event correlations for h-h case", true);
+
 };
 
 WorkflowSpec defineDataProcessing(ConfigContext const& cfgc)
