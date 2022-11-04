@@ -244,6 +244,10 @@ struct HfTaskFlow {
     registry.add("hMCEta", "eta", {HistType::kTH1F, {{100, -4, 4, "#eta"}}});
     registry.add("hMCPhi", "phi", {HistType::kTH1F, {{100, 0, 2 * PI, "#varphi"}}});
 
+    registry.add("hCheckPt", "pT", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
+    registry.add("hCheckPtMC", "pT", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
+    registry.add("hCheckPtCorr", "pT", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
+
     //  CORRELATION CONTAINERS
     sameTPCTPCCh.setObject(new CorrelationContainer("sameEventTPCTPCChHadrons", "sameEventTPCTPCChHadrons", corrAxis, effAxis, {}));
     sameTPCMFTCh.setObject(new CorrelationContainer("sameEventTPCMFTChHadrons", "sameEventTPCMFTChHadrons", corrAxis, effAxis, {}));
@@ -420,7 +424,7 @@ struct HfTaskFlow {
   }
 
   template <CorrelationContainer::CFStep step, typename TTracks>
-  void fillMcParticleQA(TTracks mcparticles)
+  int fillMcParticleQA(TTracks mcparticles)
   {
     int Nparticles = 0;
     for (auto& mcparticle : mcparticles) {
@@ -433,6 +437,7 @@ struct HfTaskFlow {
       registry.fill(HIST("hMCPhi"), mcparticle.phi());
     }
     registry.fill(HIST("hMCMultiplicityPrimary"), Nparticles);
+    return Nparticles;
   }
 
   template <CorrelationContainer::CFStep step, typename TTarget, typename TTracksTrig, typename TTracksAssoc>
@@ -492,6 +497,16 @@ struct HfTaskFlow {
           triggerWeight = 1./trigEff;
           registry.fill(HIST("hEffTrigCheck"), track1.pt(), 1./triggerWeight); // TODO: remove this, it is just a crosscheck to see if I get efficiency back
         }
+      }
+
+      if constexpr (step == CorrelationContainer::kCFStepVertex) {  
+        registry.fill(HIST("hCheckPtMC"), track1.pt());
+      }
+      if constexpr (step == CorrelationContainer::kCFStepReconstructed) {  
+        registry.fill(HIST("hCheckPt"), track1.pt());
+      }
+      if constexpr (step == CorrelationContainer::kCFStepCorrected) {  
+        registry.fill(HIST("hCheckPtCorr"), track1.pt(), triggerWeight);
       }
 
       //  fill single-track distributions
@@ -774,9 +789,9 @@ struct HfTaskFlow {
     }
 
     //  fill correlations for MC collisions that have a reconstructed collision
-    fillMcParticleQA<CorrelationContainer::kCFStepVertex>(mcParticles);
+    const auto multPrimaryCharge0 = fillMcParticleQA<CorrelationContainer::kCFStepVertex>(mcParticles);
     sameTPCTPCCh->fillEvent(multiplicity, CorrelationContainer::kCFStepVertex);
-    fillCorrelations<CorrelationContainer::kCFStepVertex>(sameTPCTPCCh, mcParticles, mcParticles, multiplicity, mcCollision.posZ());
+    fillCorrelations<CorrelationContainer::kCFStepVertex>(sameTPCTPCCh, mcParticles, mcParticles, multPrimaryCharge0, mcCollision.posZ());
   }
   PROCESS_SWITCH(HfTaskFlow, processMCSameTPCTPChh, "Process MC-gen level same-event correlations for h-h case", true);
 
