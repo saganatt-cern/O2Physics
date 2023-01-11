@@ -54,9 +54,9 @@ struct HfTaskFlow {
 
   //  configurables for CCDB
   Service<ccdb::BasicCCDBManager> ccdb;
-  Configurable<std::string> path{"ccdb-path", "Users/k/kgajdoso/efficiency", "base path to the ccdb object"};
-  Configurable<std::string> url{"ccdb-url", "http://ccdb-test.cern.ch", "url of the ccdb repository"};
-  Configurable<std::string> date{"ccdb-date", "20221025", "date of the ccdb file"};
+  Configurable<std::string> path{"ccdbPath", "Users/k/kgajdoso/efficiency", "base path to the ccdb object"};
+  Configurable<std::string> url{"ccdbUrl", "http://ccdb-test.cern.ch", "url of the ccdb repository"};
+  Configurable<std::string> date{"ccdbDate", "20221025", "date of the ccdb file"};
 
   //  EFFICIENCY
   TList* listEfficiency = nullptr;
@@ -92,6 +92,16 @@ struct HfTaskFlow {
                        requireGlobalTrackWoPtEtaInFilter();
   using aodTracks = soa::Filtered<soa::Join<aod::Tracks, aod::TracksDCA, aod::TrackSelection, aod::McTrackLabels>>;
 
+  //  MC collision filters
+  Filter mcCollisionFilter = nabs(aod::mccollision::posZ) < zVertexMax;
+  using aodMcCollisions = soa::Filtered<aod::McCollisions>;
+
+  //  MC particle filters
+  Filter mcParticlesFilter = (nabs(aod::mcparticle::eta) < etaTrackAssocMax) &&
+                             (aod::mcparticle::pt > ptTrackAssocMin); //&&
+                             //(aod::mcparticle::sign != 0)
+  using aodMcParticles = soa::Filtered<aod::McParticles>;
+
   //  HF candidate filter
   //  TODO: use Partition instead of filter
   Filter candidateFilter = aod::hf_sel_candidate_d0::isSelD0 >= selectionFlagD0 || aod::hf_sel_candidate_d0::isSelD0bar >= selectionFlagD0bar;
@@ -114,21 +124,11 @@ struct HfTaskFlow {
 
   HistogramRegistry registry{"registry"};
 
-  OutputObj<CorrelationContainer> sameTPCTPCCh{"sameEventTPCTPCChHadrons"};
-  OutputObj<CorrelationContainer> sameTPCMFTCh{"sameEventTPCMFTChHadrons"};
-  OutputObj<CorrelationContainer> sameHF{"sameEventHFHadrons"};
-  OutputObj<CorrelationContainer> mixedTPCTPCCh{"mixedEventTPCTPCChHadrons"};
-  OutputObj<CorrelationContainer> mixedHF{"mixedEventHFHadrons"};
-
-  //  MC collision filters
-  Filter mcCollisionFilter = nabs(aod::mccollision::posZ) < cfgCutVertex;
-  using aodMcCollisions = soa::Filtered<aod::McCollisions>;
-
-  //  MC particle filters
-  Filter mcParticlesFilter = (nabs(aod::mcparticle::eta) < cfgCutEta) &&
-                             (aod::mcparticle::pt > cfgCutPt); //&&
-                             //(aod::mcparticle::sign != 0)
-  using aodMcParticles = soa::Filtered<aod::McParticles>;
+  OutputObj<CorrelationContainer> sameTpcTpcHH{"sameEventTpcTpcHH"};
+  OutputObj<CorrelationContainer> sameTpcMftHH{"sameEventTpcMftHH"};
+  OutputObj<CorrelationContainer> sameTpcTpcHfH{"sameEventTpcTpcHfH"};
+  OutputObj<CorrelationContainer> mixedTpcTpcHH{"mixedEventTpcTpcHH"};
+  OutputObj<CorrelationContainer> mixedTpcTpcHfH{"mixedEventTpcTpcHfH"};
 
   //  =========================
   //      init()
@@ -237,23 +237,23 @@ struct HfTaskFlow {
     registry.add("hEffAssocCheck", "efficiency; pT", {HistType::kTProfile, {{axisPtEfficiency}}});
 
     //  MC histograms
-    registry.add("hMCVtxZ", "hMCVtxZ", {HistType::kTH1F, {{400, -50, 50}}});
-    registry.add("hMCMultiplicity", "hMCMultiplicity", {HistType::kTH1F, {{500, 0, 500}}});
-    registry.add("hMCMultiplicityPrimary", "hMCMultiplicityPrimary", {HistType::kTH1F, {{500, 0, 500}}});
-    registry.add("hMCPt", "pT", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
-    registry.add("hMCEta", "eta", {HistType::kTH1F, {{100, -4, 4, "#eta"}}});
-    registry.add("hMCPhi", "phi", {HistType::kTH1F, {{100, 0, 2 * PI, "#varphi"}}});
+    registry.add("hMcVtxZ", "hMcVtxZ", {HistType::kTH1F, {{400, -50, 50}}});
+    registry.add("hMcMultiplicity", "hMcMultiplicity", {HistType::kTH1F, {{500, 0, 500}}});
+    registry.add("hMcMultiplicityPrimary", "hMcMultiplicityPrimary", {HistType::kTH1F, {{500, 0, 500}}});
+    registry.add("hMcPt", "pT", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
+    registry.add("hMcEta", "eta", {HistType::kTH1F, {{100, -4, 4, "#eta"}}});
+    registry.add("hMcPhi", "phi", {HistType::kTH1F, {{100, 0, 2 * PI, "#varphi"}}});
 
     registry.add("hCheckPt", "pT", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
     registry.add("hCheckPtMC", "pT", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
     registry.add("hCheckPtCorr", "pT", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
 
     //  CORRELATION CONTAINERS
-    sameTPCTPCCh.setObject(new CorrelationContainer("sameEventTPCTPCChHadrons", "sameEventTPCTPCChHadrons", corrAxis, effAxis, {}));
-    sameTPCMFTCh.setObject(new CorrelationContainer("sameEventTPCMFTChHadrons", "sameEventTPCMFTChHadrons", corrAxis, effAxis, {}));
-    sameHF.setObject(new CorrelationContainer("sameEventHFHadrons", "sameEventHFHadrons", corrAxis, effAxis, userAxis));
-    mixedTPCTPCCh.setObject(new CorrelationContainer("mixedEventTPCTPCChHadrons", "mixedEventTPCTPCChHadrons", corrAxis, effAxis, {}));
-    mixedHF.setObject(new CorrelationContainer("mixedEventHFHadrons", "mixedEventHFHadrons", corrAxis, effAxis, userAxis));
+    sameTpcTpcHH.setObject(new CorrelationContainer("sameEventTpcTpcHH", "sameEventTpcTpcHH", corrAxis, effAxis, {}));
+    sameTpcMftHH.setObject(new CorrelationContainer("sameEventTpcMftHH", "sameEventTpcMftHH", corrAxis, effAxis, {}));
+    sameTpcTpcHfH.setObject(new CorrelationContainer("sameEventTpcTpcHfH", "sameEventTpcTpcHfH", corrAxis, effAxis, userAxis));
+    mixedTpcTpcHH.setObject(new CorrelationContainer("mixedEventTpcTpcHH", "mixedEventTpcTpcHH", corrAxis, effAxis, {}));
+    mixedTpcTpcHfH.setObject(new CorrelationContainer("mixedEventTpcTpcHfH", "mixedEventTpcTpcHfH", corrAxis, effAxis, userAxis));
 
   }
 
@@ -432,11 +432,11 @@ struct HfTaskFlow {
         continue;
       }
       Nparticles++;
-      registry.fill(HIST("hMCPt"), mcparticle.pt());
-      registry.fill(HIST("hMCEta"), mcparticle.eta());
-      registry.fill(HIST("hMCPhi"), mcparticle.phi());
+      registry.fill(HIST("hMcPt"), mcparticle.pt());
+      registry.fill(HIST("hMcEta"), mcparticle.eta());
+      registry.fill(HIST("hMcPhi"), mcparticle.phi());
     }
-    registry.fill(HIST("hMCMultiplicityPrimary"), Nparticles);
+    registry.fill(HIST("hMcMultiplicityPrimary"), Nparticles);
     return Nparticles;
   }
 
@@ -677,12 +677,12 @@ struct HfTaskFlow {
 
     fillQA(multiplicity, tracks);
     //  fill raw correlations
-    sameTPCTPCCh->fillEvent(multiplicity, CorrelationContainer::kCFStepReconstructed);
-    fillCorrelations<CorrelationContainer::kCFStepReconstructed>(sameTPCTPCCh, tracks, tracks, multiplicity, collision.posZ());
+    sameTpcTpcHH->fillEvent(multiplicity, CorrelationContainer::kCFStepReconstructed);
+    fillCorrelations<CorrelationContainer::kCFStepReconstructed>(sameTpcTpcHH, tracks, tracks, multiplicity, collision.posZ());
     //  fill corrected correlations
     if (hEfficiencyTrig || hEfficiencyAssoc) {
-      sameTPCTPCCh->fillEvent(multiplicity, CorrelationContainer::kCFStepCorrected);
-      fillCorrelations<CorrelationContainer::kCFStepCorrected>(sameTPCTPCCh, tracks, tracks, multiplicity, collision.posZ());
+      sameTpcTpcHH->fillEvent(multiplicity, CorrelationContainer::kCFStepCorrected);
+      fillCorrelations<CorrelationContainer::kCFStepCorrected>(sameTpcTpcHH, tracks, tracks, multiplicity, collision.posZ());
     }
   }
   PROCESS_SWITCH(HfTaskFlow, processSameTpcTpcHH, "Process same-event correlations for h-h case", true);
@@ -690,7 +690,7 @@ struct HfTaskFlow {
   // =====================================
   //    process same event correlations: HF-h case
   // =====================================
-  void processSameHfHadrons(aodCollisions::iterator const& collision,
+  void processSameTpcTpcHfH(aodCollisions::iterator const& collision,
                             aodTracks const& tracks,
                             hfCandidates const& candidates)
   {
@@ -704,15 +704,15 @@ struct HfTaskFlow {
 
     fillCandidateQA(candidates);
     //  fill raw correlations
-    sameHF->fillEvent(multiplicity, CorrelationContainer::kCFStepReconstructed);
-    fillCorrelations<CorrelationContainer::kCFStepReconstructed>(sameHF, candidates, tracks, multiplicity, collision.posZ());
+    sameTpcTpcHfH->fillEvent(multiplicity, CorrelationContainer::kCFStepReconstructed);
+    fillCorrelations<CorrelationContainer::kCFStepReconstructed>(sameTpcTpcHfH, candidates, tracks, multiplicity, collision.posZ());
     //  fill corrected correlations
     if (hEfficiencyTrig || hEfficiencyAssoc) {
-      sameHF->fillEvent(multiplicity, CorrelationContainer::kCFStepCorrected);
-      fillCorrelations<CorrelationContainer::kCFStepCorrected>(sameHF, candidates, tracks, multiplicity, collision.posZ());
+      sameTpcTpcHfH->fillEvent(multiplicity, CorrelationContainer::kCFStepCorrected);
+      fillCorrelations<CorrelationContainer::kCFStepCorrected>(sameTpcTpcHfH, candidates, tracks, multiplicity, collision.posZ());
     }
   }
-  PROCESS_SWITCH(HfTaskFlow, processSameHfHadrons, "Process same-event correlations for HF-h case", true);
+  PROCESS_SWITCH(HfTaskFlow, processSameTpcTpcHfH, "Process same-event correlations for HF-h case", true);
 
   // =====================================
   //    process same event correlations: h-MFT case
@@ -727,9 +727,9 @@ struct HfTaskFlow {
 
     const auto multiplicity = tracks.size();
 
-    sameTPCMFTCh->fillEvent(multiplicity, CorrelationContainer::kCFStepReconstructed);
+    sameTpcMftHH->fillEvent(multiplicity, CorrelationContainer::kCFStepReconstructed);
     fillMFTQA(multiplicity, mfttracks);
-    fillCorrelations<CorrelationContainer::kCFStepReconstructed>(sameTPCMFTCh, tracks, mfttracks, multiplicity, collision.posZ());
+    fillCorrelations<CorrelationContainer::kCFStepReconstructed>(sameTpcMftHH, tracks, mfttracks, multiplicity, collision.posZ());
   }
   PROCESS_SWITCH(HfTaskFlow, processSameTpcMftHH, "Process same-event correlations for h-MFT case", true);
 
@@ -747,14 +747,14 @@ struct HfTaskFlow {
       return size;
     };
 
-    mixCollisions(collisions, tracks, tracks, getTracksSize, mixedTPCTPCCh);
+    mixCollisions(collisions, tracks, tracks, getTracksSize, mixedTpcTpcHH);
   }
   PROCESS_SWITCH(HfTaskFlow, processMixedTpcTpcHH, "Process mixed-event correlations for h-h case", true);
 
   // =====================================
   //    process mixed event correlations: HF-h case
   // =====================================
-  void processMixedHfHadrons(aodCollisions& collisions,
+  void processMixedTpcTpcHfH(aodCollisions& collisions,
                              aodTracks& tracks,
                              hfCandidates& candidates)
   {
@@ -765,24 +765,24 @@ struct HfTaskFlow {
       return size;
     };
 
-    mixCollisions(collisions, candidates, tracks, getTracksSize, mixedHF);
+    mixCollisions(collisions, candidates, tracks, getTracksSize, mixedTpcTpcHfH);
   }
-  PROCESS_SWITCH(HfTaskFlow, processMixedHfHadrons, "Process mixed-event correlations for HF-h case", true);
+  PROCESS_SWITCH(HfTaskFlow, processMixedTpcTpcHfH, "Process mixed-event correlations for HF-h case", true);
 
   // =====================================
   //    process same event MC correlations: h-h case
   // =====================================
-  void processMCSameTPCTPChh(aodMcCollisions::iterator const& mcCollision,
+  void processMcSameTpcTpcHH(aodMcCollisions::iterator const& mcCollision,
                              aodMcParticles const& mcParticles,
                              aodCollisions const& collisions)
   {
     const auto multiplicity = mcParticles.size(); // Note: these are all MC particles after selection (not only primary)
-    registry.fill(HIST("hMCVtxZ"), mcCollision.posZ());
-    registry.fill(HIST("hMCMultiplicity"), multiplicity);
+    registry.fill(HIST("hMcVtxZ"), mcCollision.posZ());
+    registry.fill(HIST("hMcMultiplicity"), multiplicity);
 
     //  fill correlations for all MC collisions
-    sameTPCTPCCh->fillEvent(multiplicity, CorrelationContainer::kCFStepAll);
-    fillCorrelations<CorrelationContainer::kCFStepAll>(sameTPCTPCCh, mcParticles, mcParticles, multiplicity, mcCollision.posZ());
+    sameTpcTpcHH->fillEvent(multiplicity, CorrelationContainer::kCFStepAll);
+    fillCorrelations<CorrelationContainer::kCFStepAll>(sameTpcTpcHH, mcParticles, mcParticles, multiplicity, mcCollision.posZ());
 
     if (collisions.size() == 0) {
       return;
@@ -790,10 +790,10 @@ struct HfTaskFlow {
 
     //  fill correlations for MC collisions that have a reconstructed collision
     const auto multPrimaryCharge0 = fillMcParticleQA<CorrelationContainer::kCFStepVertex>(mcParticles);
-    sameTPCTPCCh->fillEvent(multiplicity, CorrelationContainer::kCFStepVertex);
-    fillCorrelations<CorrelationContainer::kCFStepVertex>(sameTPCTPCCh, mcParticles, mcParticles, multPrimaryCharge0, mcCollision.posZ());
+    sameTpcTpcHH->fillEvent(multiplicity, CorrelationContainer::kCFStepVertex);
+    fillCorrelations<CorrelationContainer::kCFStepVertex>(sameTpcTpcHH, mcParticles, mcParticles, multPrimaryCharge0, mcCollision.posZ());
   }
-  PROCESS_SWITCH(HfTaskFlow, processMCSameTPCTPChh, "Process MC-gen level same-event correlations for h-h case", true);
+  PROCESS_SWITCH(HfTaskFlow, processMcSameTpcTpcHH, "Process MC-gen level same-event correlations for h-h case", true);
 
 };
 
