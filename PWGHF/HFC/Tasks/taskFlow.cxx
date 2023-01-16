@@ -17,6 +17,7 @@
 #include "Framework/AnalysisTask.h"
 #include "Framework/AnalysisDataModel.h"
 #include "Framework/ASoAHelpers.h"
+#include "Framework/O2DatabasePDGPlugin.h"
 #include "CCDB/BasicCCDBManager.h"
 #include "Framework/GroupSlicer.h"
 #include "Framework/StepTHn.h"
@@ -50,7 +51,7 @@ using namespace o2::aod::hf_cand_2prong;
 using namespace o2::analysis::hf_cuts_d0_to_pi_k;
 
 struct HfTaskFlow {
-  Service<TDatabasePDG> pdg;
+  Service<O2DatabasePDG> pdg;
 
   //  configurables for CCDB
   Service<ccdb::BasicCCDBManager> ccdb;
@@ -61,6 +62,7 @@ struct HfTaskFlow {
   //  EFFICIENCY
   TList* listEfficiency = nullptr;
   THn* hEfficiencyTrig = nullptr;
+  TH1* hEfficiencyTrigHF = nullptr;
   THn* hEfficiencyAssoc = nullptr;
   bool isEfficiencyLoaded = false;
 
@@ -234,6 +236,7 @@ struct HfTaskFlow {
 
     //  EFFICIENCY histograms
     registry.add("hEffTrigCheck", "efficiency; pT", {HistType::kTProfile, {{axisPtEfficiency}}});
+    registry.add("hEffTrigHFCheck", "efficiency; pT", {HistType::kTProfile, {{axisPtEfficiency}}});
     registry.add("hEffAssocCheck", "efficiency; pT", {HistType::kTProfile, {{axisPtEfficiency}}});
 
     //  MC histograms
@@ -461,7 +464,7 @@ struct HfTaskFlow {
 
     for (auto& track1 : tracks1) {
 
-        //  in case of MC-generated, do additional selection on MCparticles : charge and isPhysicalPrimary
+      //  in case of MC-generated, do additional selection on MCparticles : charge and isPhysicalPrimary
       if constexpr (step <= CorrelationContainer::kCFStepTracked) {
         if (!isMcParticleSelected<step>(track1)) {
           continue;
@@ -488,17 +491,30 @@ struct HfTaskFlow {
 
       //  TODO: add getter for trigger efficiency here
       if constexpr (step == CorrelationContainer::kCFStepCorrected) {
-        if (hEfficiencyTrig) { // change this to specific trigger efficiency histogram
-          float trigEff = getEfficiency(hEfficiencyTrig, track1.eta(), track1.pt(), multiplicity, posZ);
-          if (trigEff == 0) {
-            printf("I have 0 efficiency \n");
-            trigEff = 1;
+        if (fillingHFcontainer) {
+          if (hEfficiencyTrigHF) {
+            float trigEff = getEfficiencyHF(hEfficiencyTrigHF, track1.pt());
+            if (trigEff == 0) {
+              printf("I have 0 efficiency \n");
+              trigEff = 1;
+            }
+            triggerWeight = 1./trigEff;
+            registry.fill(HIST("hEffTrigHFCheck"), track1.pt(), 1./triggerWeight); // TODO: remove this, it is just a crosscheck to see if I get efficiency back
           }
-          triggerWeight = 1./trigEff;
-          registry.fill(HIST("hEffTrigCheck"), track1.pt(), 1./triggerWeight); // TODO: remove this, it is just a crosscheck to see if I get efficiency back
+        } else {
+          if (hEfficiencyTrig) {
+            float trigEff = getEfficiency(hEfficiencyTrig, track1.eta(), track1.pt(), multiplicity, posZ);
+            if (trigEff == 0) {
+              printf("I have 0 efficiency \n");
+              trigEff = 1;
+            }
+            triggerWeight = 1./trigEff;
+            registry.fill(HIST("hEffTrigCheck"), track1.pt(), 1./triggerWeight); // TODO: remove this, it is just a crosscheck to see if I get efficiency back
+          }
         }
       }
 
+      //  TODO: temporary checks. Careful! It is filled twice if I run both LF and HF case
       if constexpr (step == CorrelationContainer::kCFStepVertex) {  
         registry.fill(HIST("hCheckPtMC"), track1.pt());
       }
@@ -628,6 +644,12 @@ struct HfTaskFlow {
       }
       LOGF(info, "Loaded efficiency histogram for trigger particles from %s", path.value.c_str());
 
+      hEfficiencyTrigHF = (TH1*)listEfficiency->FindObject("HFefficiency");
+      if (hEfficiencyTrigHF == nullptr) {
+        LOGF(fatal, "Could not load efficiency histogram for trigger HF particles from %s", path.value.c_str());
+      }
+      LOGF(info, "Loaded efficiency histogram for trigger HF particles from %s", path.value.c_str());
+
       hEfficiencyAssoc = (THn*)listEfficiency->FindObject(Form("%sefficiency", prefixAssoc.c_str()));
       if (hEfficiencyAssoc == nullptr) {
         LOGF(fatal, "Could not load efficiency histogram for associated particles from %s", path.value.c_str());
@@ -640,13 +662,19 @@ struct HfTaskFlow {
   double getEfficiency(THn* hEfficiency, float eta, float pt, float multiplicity, float posZ)
   {
     double efficiency;
-    //efficiency = hEfficiency->GetBinContent(hEfficiency->FindBin(pt));
     int effVariables[4];
     effVariables[0] = hEfficiency->GetAxis(0)->FindBin(eta);
     effVariables[1] = hEfficiency->GetAxis(1)->FindBin(pt);
     effVariables[2] = hEfficiency->GetAxis(2)->FindBin(multiplicity);
     effVariables[3] = hEfficiency->GetAxis(3)->FindBin(posZ);
     efficiency = hEfficiency->GetBinContent(effVariables);
+    return efficiency;
+  }
+
+  double getEfficiencyHF(TH1* hEfficiency, float pt)
+  {
+    double efficiency;
+    efficiency = hEfficiency->GetBinContent(hEfficiency->FindBin(pt));
     return efficiency;
   }
 
@@ -700,7 +728,7 @@ struct HfTaskFlow {
 
     const auto multiplicity = tracks.size();
 
-    loadEfficiency("HF", "");
+    loadEfficiency("", "");
 
     fillCandidateQA(candidates);
     //  fill raw correlations
