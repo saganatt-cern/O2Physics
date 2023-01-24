@@ -81,6 +81,7 @@ struct HfTaskFlow {
   Configurable<int> selectionFlagD0{"selectionFlagD0", 1, "Selection Flag for D0"};
   Configurable<int> selectionFlagD0bar{"selectionFlagD0bar", 1, "Selection Flag for D0bar"};
   Configurable<double> yCandMax{"yCandMax", -1., "max. cand. rapidity"};
+  //Configurable<int> selectionFlagHfCand{"selectionFlagHfCand", 1, "Selection Flag for HF flagged candidates"};
   Configurable<std::vector<double>> binsPt{"binsPt", std::vector<double>{hf_cuts_d0_to_pi_k::vecBinsPt}, "pT bin limits"};
 
   //  Collision filters
@@ -108,6 +109,11 @@ struct HfTaskFlow {
   //  TODO: use Partition instead of filter
   Filter candidateFilter = aod::hf_sel_candidate_d0::isSelD0 >= selectionFlagD0 || aod::hf_sel_candidate_d0::isSelD0bar >= selectionFlagD0bar;
   using hfCandidates = soa::Filtered<soa::Join<aod::HfCand2Prong, aod::HfSelD0>>;
+  //  HF MCrec candidate filter
+  //Filter candidateMcFilter = aod::hf_sel_candidate_d0::isRecoHfFlag >= selectionFlagHfCand; 
+  //using hfMcRecCandidates = soa::Filtered<soa::Join<aod::HfCand2Prong, aod::HfSelD0, aod::HfCand2ProngMcRec>>;
+  //  HF MCgen candidates
+  using hfMcGenCandidates = soa::Join<aod::McParticles, aod::HfCand2ProngMcGen>;
 
   //  configurables for containers
   ConfigurableAxis axisVertex{"axisVertex", {14, -7, 7}, "vertex axis for histograms"};
@@ -199,23 +205,10 @@ struct HfTaskFlow {
     //  histograms for candidates
     auto vbins = (std::vector<double>)binsPt;
 
-    registry.add("hPtCand", "2-prong candidates;candidate #it{p}_{T} (GeV/#it{c});entries", {HistType::kTH1F, {{100, 0, 10.}}});
-    registry.add("hPtProng0", "2-prong candidates;prong 0 #it{p}_{T} (GeV/#it{c});entries", {HistType::kTH1F, {{100, 0, 10.}}});
-    registry.add("hPtProng1", "2-prong candidates;prong 1 #it{p}_{T} (GeV/#it{c});entries", {HistType::kTH1F, {{100, 0, 10.}}});
+    registry.add("hPtCand", "2-prong candidates;candidate #it{p}_{T} (GeV/#it{c});entries", {HistType::kTH1F, {{100, 0, 10., "p_{T}"}}});
+    registry.add("hEtaCand", "2-prong candidates;candidate #eta;entries", {HistType::kTH1F, {{100, -4, 4, "#eta"}}});
+    registry.add("hPhiCand", "2-prong candidates;candidate #varphi;entries", {HistType::kTH1F, {{100, 0, 2 * PI, "#varphi"}}});
     registry.add("hMass", "2-prong candidates;inv. mass (#pi K) (GeV/#it{c}^{2});entries", {HistType::kTH2F, {{500, 0., 5.}, {vbins, "#it{p}_{T} (GeV/#it{c})"}}});
-    registry.add("hDecLength", "2-prong candidates;decay length (cm);entries", {HistType::kTH2F, {{200, 0., 2.}, {vbins, "#it{p}_{T} (GeV/#it{c})"}}});
-    registry.add("hDecLengthXY", "2-prong candidates;decay length xy (cm);entries", {HistType::kTH2F, {{200, 0., 2.}, {vbins, "#it{p}_{T} (GeV/#it{c})"}}});
-    registry.add("hd0Prong0", "2-prong candidates;prong 0 DCAxy to prim. vertex (cm);entries", {HistType::kTH2F, {{100, -1., 1.}, {vbins, "#it{p}_{T} (GeV/#it{c})"}}});
-    registry.add("hd0Prong1", "2-prong candidates;prong 1 DCAxy to prim. vertex (cm);entries", {HistType::kTH2F, {{100, -1., 1.}, {vbins, "#it{p}_{T} (GeV/#it{c})"}}});
-    registry.add("hd0d0", "2-prong candidates;product of DCAxy to prim. vertex (cm^{2});entries", {HistType::kTH2F, {{500, -1., 1.}, {vbins, "#it{p}_{T} (GeV/#it{c})"}}});
-    registry.add("hCTS", "2-prong candidates;cos #it{#theta}* (D^{0});entries", {HistType::kTH2F, {{110, -1.1, 1.1}, {vbins, "#it{p}_{T} (GeV/#it{c})"}}});
-    registry.add("hCt", "2-prong candidates;proper lifetime (D^{0}) * #it{c} (cm);entries", {HistType::kTH2F, {{120, -20., 100.}, {vbins, "#it{p}_{T} (GeV/#it{c})"}}});
-    registry.add("hCPA", "2-prong candidates;cosine of pointing angle;entries", {HistType::kTH2F, {{110, -1.1, 1.1}, {vbins, "#it{p}_{T} (GeV/#it{c})"}}});
-    registry.add("hEtaCand", "2-prong candidates;candidate #it{#eta};entries", {HistType::kTH2F, {{100, -2., 2.}, {vbins, "#it{p}_{T} (GeV/#it{c})"}}});
-    registry.add("hSelectionStatus", "2-prong candidates;selection status;entries", {HistType::kTH2F, {{5, -0.5, 4.5}, {vbins, "#it{p}_{T} (GeV/#it{c})"}}});
-    registry.add("hImpParErr", "2-prong candidates;impact parameter error (cm);entries", {HistType::kTH2F, {{100, -1., 1.}, {vbins, "#it{p}_{T} (GeV/#it{c})"}}});
-    registry.add("hDecLenErr", "2-prong candidates;decay length error (cm);entries", {HistType::kTH2F, {{100, 0., 1.}, {vbins, "#it{p}_{T} (GeV/#it{c})"}}});
-    registry.add("hDecLenXYErr", "2-prong candidates;decay length xy error (cm);entries", {HistType::kTH2F, {{100, 0., 1.}, {vbins, "#it{p}_{T} (GeV/#it{c})"}}});
 
     //  histograms for candidates in event mixing
     registry.add("hPtHFMixing", "pT", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
@@ -246,6 +239,12 @@ struct HfTaskFlow {
     registry.add("hMcPt", "pT", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
     registry.add("hMcEta", "eta", {HistType::kTH1F, {{100, -4, 4, "#eta"}}});
     registry.add("hMcPhi", "phi", {HistType::kTH1F, {{100, 0, 2 * PI, "#varphi"}}});
+
+    registry.add("hMcHfPt", "pT", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
+    registry.add("hMcHfEta", "eta", {HistType::kTH1F, {{100, -4, 4, "#eta"}}});
+    registry.add("hMcHfPhi", "phi", {HistType::kTH1F, {{100, 0, 2 * PI, "#varphi"}}});
+    registry.add("hMcMultiplicity_HFtest", "hMcMultiplicity_HFtest", {HistType::kTH1F, {{500, 0, 500}}});
+    registry.add("hMcMultiplicityPrimary_HFtest", "hMcMultiplicityPrimary_HFtest", {HistType::kTH1F, {{500, 0, 500}}});
 
     registry.add("hCheckPt", "pT", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
     registry.add("hCheckPtMC", "pT", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
@@ -386,27 +385,13 @@ struct HfTaskFlow {
       }
 
       registry.fill(HIST("hPtCand"), candidate.pt());
-      registry.fill(HIST("hPtProng0"), candidate.ptProng0());
-      registry.fill(HIST("hPtProng1"), candidate.ptProng1());
-      registry.fill(HIST("hDecLength"), candidate.decayLength(), candidate.pt());
-      registry.fill(HIST("hDecLengthXY"), candidate.decayLengthXY(), candidate.pt());
-      registry.fill(HIST("hd0Prong0"), candidate.impactParameter0(), candidate.pt());
-      registry.fill(HIST("hd0Prong1"), candidate.impactParameter1(), candidate.pt());
-      registry.fill(HIST("hd0d0"), candidate.impactParameterProduct(), candidate.pt());
-      registry.fill(HIST("hCTS"), cosThetaStarD0(candidate), candidate.pt());
-      registry.fill(HIST("hCt"), ctD0(candidate), candidate.pt());
-      registry.fill(HIST("hCPA"), candidate.cpa(), candidate.pt());
-      registry.fill(HIST("hEtaCand"), candidate.eta(), candidate.pt());
-      registry.fill(HIST("hSelectionStatus"), candidate.isSelD0() + (candidate.isSelD0bar() * 2), candidate.pt());
-      registry.fill(HIST("hImpParErr"), candidate.errorImpactParameter0(), candidate.pt());
-      registry.fill(HIST("hImpParErr"), candidate.errorImpactParameter1(), candidate.pt());
-      registry.fill(HIST("hDecLenErr"), candidate.errorDecayLength(), candidate.pt());
-      registry.fill(HIST("hDecLenXYErr"), candidate.errorDecayLengthXY(), candidate.pt());
+      registry.fill(HIST("hEtaCand"), candidate.pt());
+      registry.fill(HIST("hPhiCand"), candidate.pt());
     }
   }
 
   template <CorrelationContainer::CFStep step, typename TTrack>
-  bool isMcParticleSelected(TTrack& track) // Note: these are actually MC particles
+  bool isMcParticleSelected(TTrack& track)
   {
     //  remove MC particles with charge = 0
     int8_t sign = 0;
@@ -422,12 +407,25 @@ struct HfTaskFlow {
     if constexpr (step <= CorrelationContainer::kCFStepAnaTopology) {
       return track.isPhysicalPrimary();
     }
+    return true;
+  }
 
+  template <typename TTrack>
+  bool isMcHfParticleSelected(TTrack& track)
+  {
+    //  check if we are selecting HF particle that we desire
+    if (!(std::abs(track.flagMcMatchGen()) == 1 << DecayType::D0ToPiK)) {
+      return false;
+    }
+    //  check rapidity of the HF particle
+    if (yCandMax >= 0. && std::abs(RecoDecay::y(array{track.px(), track.py(), track.pz()}, RecoDecay::getMassPDG(track.pdgCode()))) > yCandMax) {
+      return false;
+    }
     return true;
   }
 
   template <CorrelationContainer::CFStep step, typename TTracks>
-  int fillMcParticleQA(TTracks mcparticles)
+  int fillMcParticleQA(TTracks mcparticles, bool fillHist)
   {
     int Nparticles = 0;
     for (auto& mcparticle : mcparticles) {
@@ -435,11 +433,31 @@ struct HfTaskFlow {
         continue;
       }
       Nparticles++;
-      registry.fill(HIST("hMcPt"), mcparticle.pt());
-      registry.fill(HIST("hMcEta"), mcparticle.eta());
-      registry.fill(HIST("hMcPhi"), mcparticle.phi());
+      if (fillHist) {
+        registry.fill(HIST("hMcPt"), mcparticle.pt());
+        registry.fill(HIST("hMcEta"), mcparticle.eta());
+        registry.fill(HIST("hMcPhi"), mcparticle.phi());
+      }
     }
-    registry.fill(HIST("hMcMultiplicityPrimary"), Nparticles);
+    if (fillHist) {
+      registry.fill(HIST("hMcMultiplicityPrimary"), Nparticles);
+    }
+    return Nparticles;
+  }
+
+  template <typename TTracks>
+  int fillMcHfCandidateQA(TTracks mcparticles)
+  {
+    int Nparticles = 0;
+    for (auto& mcparticle : mcparticles) {
+      if (!isMcHfParticleSelected(mcparticle)) {
+        continue;
+      }
+      Nparticles++;
+      registry.fill(HIST("hMcHfPt"), mcparticle.pt());
+      registry.fill(HIST("hMcHfEta"), mcparticle.eta());
+      registry.fill(HIST("hMcHfPhi"), mcparticle.phi());
+    }
     return Nparticles;
   }
 
@@ -466,8 +484,14 @@ struct HfTaskFlow {
 
       //  in case of MC-generated, do additional selection on MCparticles : charge and isPhysicalPrimary
       if constexpr (step <= CorrelationContainer::kCFStepTracked) {
-        if (!isMcParticleSelected<step>(track1)) {
-          continue;
+        if constexpr (std::is_same_v<hfCandidates, TTracksTrig>) {
+          if (!isMcHfParticleSelected(track1)) {
+            continue;
+          }
+        } else {
+          if (!isMcParticleSelected<step>(track1)) {
+            continue;
+          }
         }
       }
 
@@ -817,11 +841,39 @@ struct HfTaskFlow {
     }
 
     //  fill correlations for MC collisions that have a reconstructed collision
-    const auto multPrimaryCharge0 = fillMcParticleQA<CorrelationContainer::kCFStepVertex>(mcParticles);
-    sameTpcTpcHH->fillEvent(multiplicity, CorrelationContainer::kCFStepVertex);
+    const auto multPrimaryCharge0 = fillMcParticleQA<CorrelationContainer::kCFStepVertex>(mcParticles, true);
+    sameTpcTpcHH->fillEvent(multPrimaryCharge0, CorrelationContainer::kCFStepVertex);
     fillCorrelations<CorrelationContainer::kCFStepVertex>(sameTpcTpcHH, mcParticles, mcParticles, multPrimaryCharge0, mcCollision.posZ());
   }
   PROCESS_SWITCH(HfTaskFlow, processMcSameTpcTpcHH, "Process MC-gen level same-event correlations for h-h case", true);
+
+  // =====================================
+  //    process same event MC correlations: HF-h case
+  // =====================================
+  void processMcSameTpcTpcHfH(aodMcCollisions::iterator const& mcCollision,
+                             aodMcParticles const& mcParticles,
+                             hfMcGenCandidates const& mcCandidates,
+                             aodCollisions const& collisions)
+  {
+    const auto multiplicity = mcParticles.size(); // Note: these are all MC particles after selection (not only primary)
+    registry.fill(HIST("hMcMultiplicity_HFtest"), multiplicity);
+
+    //  fill correlations for all MC collisions
+    sameTpcTpcHfH->fillEvent(multiplicity, CorrelationContainer::kCFStepAll);
+    fillCorrelations<CorrelationContainer::kCFStepAll>(sameTpcTpcHfH, mcCandidates, mcParticles, multiplicity, mcCollision.posZ());
+
+    if (collisions.size() == 0) {
+      return;
+    }
+
+    //  fill correlations for MC collisions that have a reconstructed collision
+    const auto multPrimaryCharge0 = fillMcParticleQA<CorrelationContainer::kCFStepVertex>(mcParticles, false);
+    registry.fill(HIST("hMcMultiplicityPrimary_HFtest"), multPrimaryCharge0);
+    fillMcHfCandidateQA(mcCandidates);
+    sameTpcTpcHfH->fillEvent(multPrimaryCharge0, CorrelationContainer::kCFStepVertex);
+    fillCorrelations<CorrelationContainer::kCFStepVertex>(sameTpcTpcHfH, mcCandidates, mcParticles, multPrimaryCharge0, mcCollision.posZ());
+  }
+  PROCESS_SWITCH(HfTaskFlow, processMcSameTpcTpcHfH, "Process MC-gen level same-event correlations for HF-h case", true);
 
 };
 
