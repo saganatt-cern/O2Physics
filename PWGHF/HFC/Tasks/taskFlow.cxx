@@ -57,7 +57,7 @@ struct HfTaskFlow {
   Service<ccdb::BasicCCDBManager> ccdb;
   Configurable<std::string> path{"ccdbPath", "Users/k/kgajdoso/efficiency", "base path to the ccdb object"};
   Configurable<std::string> url{"ccdbUrl", "http://ccdb-test.cern.ch", "url of the ccdb repository"};
-  Configurable<std::string> date{"ccdbDate", "20221025", "date of the ccdb file"};
+  //Configurable<std::string> date{"ccdbDate", "20221025", "date of the ccdb file"};
 
   //  EFFICIENCY
   TList* listEfficiency = nullptr;
@@ -148,14 +148,17 @@ struct HfTaskFlow {
     // Enabling object caching, otherwise each call goes to the CCDB server
     ccdb->setCaching(true);
     ccdb->setLocalObjectValidityChecking();
+    //  No later than now, will be replaced by the value of the train creation
+    long now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    ccdb->setCreatedNotAfter(now);
     //  put the date (date of creation of the efficiency file in CCDB) in a correct timestamp format
-    std::tm cfgtm = {};
-    std::stringstream ss(date.value); ss >> std::get_time(&cfgtm, "%Y%m%d");
-    cfgtm.tm_hour = 12;
-    long timestamp = std::mktime(&cfgtm) * 1000;
+    //std::tm cfgtm = {};
+    //std::stringstream ss(date.value); ss >> std::get_time(&cfgtm, "%Y%m%d");
+    //cfgtm.tm_hour = 12;
+    //long timestamp = std::mktime(&cfgtm) * 1000;
     
     //  get efficiency from CCDB
-    listEfficiency = ccdb->getForTimeStamp<TList>(path.value, timestamp);
+    //listEfficiency = ccdb->getForTimeStamp<TList>(path.value, timestamp);
 
     //  EVENT HISTOGRAMS
     registry.add("hEventCounter", "hEventCounter", {HistType::kTH1F, {{3, 0.5, 3.5}}});
@@ -656,12 +659,16 @@ struct HfTaskFlow {
   // =====================================
   //    get efficiency
   // =====================================
-  void loadEfficiency(std::string prefixTrig, std::string prefixAssoc)
+  void loadEfficiency(uint64_t timestamp, std::string prefixTrig, std::string prefixAssoc)
   {
     if (isEfficiencyLoaded) { // we don't need to load efficiency every time a process() is called
       return;
     }
+
     if (path.value.empty() == false) { // ccdb path to efficiency histograms
+
+      listEfficiency = ccdb->getForTimeStamp<TList>(path.value, timestamp);
+
       hEfficiencyTrig = (THn*)listEfficiency->FindObject(Form("%sefficiency", prefixTrig.c_str()));
       if (hEfficiencyTrig == nullptr) {
         LOGF(fatal, "Could not load efficiency histogram for trigger particles from %s", path.value.c_str());
@@ -706,6 +713,7 @@ struct HfTaskFlow {
   //    process same event correlations: h-h case
   // =====================================
   void processSameTpcTpcHH(aodCollisions::iterator const& collision,
+                            aod::BCsWithTimestamps const&,
                            aodTracks const& tracks)
   {
     if (!(isCollisionSelected(collision, true))) {
@@ -725,7 +733,8 @@ struct HfTaskFlow {
     int bin = baseBinning.getBin(std::make_tuple(collision.posZ(), multiplicity));
     registry.fill(HIST("hEventCountSame"), bin);
 
-    loadEfficiency("", "");
+    auto bc = collision.bc_as<aod::BCsWithTimestamps>();
+    loadEfficiency(bc.timestamp(), "", "");
 
     fillQA(multiplicity, tracks);
     //  fill raw correlations
@@ -743,6 +752,7 @@ struct HfTaskFlow {
   //    process same event correlations: HF-h case
   // =====================================
   void processSameTpcTpcHfH(aodCollisions::iterator const& collision,
+                            aod::BCsWithTimestamps const&,
                             aodTracks const& tracks,
                             hfCandidates const& candidates)
   {
@@ -752,7 +762,8 @@ struct HfTaskFlow {
 
     const auto multiplicity = tracks.size();
 
-    loadEfficiency("", "");
+    auto bc = collision.bc_as<aod::BCsWithTimestamps>();
+    loadEfficiency(bc.timestamp(), "", "");
 
     fillCandidateQA(candidates);
     //  fill raw correlations
@@ -874,6 +885,62 @@ struct HfTaskFlow {
     fillCorrelations<CorrelationContainer::kCFStepVertex>(sameTpcTpcHfH, mcCandidates, mcParticles, multPrimaryCharge0, mcCollision.posZ());
   }
   PROCESS_SWITCH(HfTaskFlow, processMcSameTpcTpcHfH, "Process MC-gen level same-event correlations for HF-h case", true);
+
+  // =====================================
+  //    process efficiency
+  // =====================================
+  int GetSpecies(int pdgCode)
+  {
+    switch (pdgCode) {
+      case 211: // pion
+      case -211:
+        return 0;
+      case 321: // Kaon
+      case -321:
+        return 1;
+      case 2212: // proton
+      case -2212:
+        return 2;
+      default:
+        return 3;
+    }
+  }
+
+  Preslice<aod::Tracks> perCollision = aod::track::collisionId;
+  void processMCEfficiency(aodMcCollisions::iterator const& mcCollision, aodMcParticles const& mcParticles, aodCollisions const& collisions, aodTracks const& tracks)
+  {
+    auto multiplicity = 0;
+    for (auto& mcParticle : mcParticles) {
+      if(isMcParticleSelected<CorrelationContainer::kCFStepAll>(mcParticle)) {
+        multiplicity++;
+      }
+    }
+    //auto multiplicity = mcCollision.multiplicity();
+    for (auto& mcParticle : mcParticles) {
+      if (isMcParticleSelected<CorrelationContainer::kCFStepAll>(mcParticle)) {
+        sameTpcTpcHH->getTrackHistEfficiency()->Fill(CorrelationContainer::MC, mcParticle.eta(), mcParticle.pt(), GetSpecies(mcParticle.pdgCode()), multiplicity, mcCollision.posZ());
+      }
+    }
+
+    for (auto& collision : collisions) {
+      auto groupedTracks = tracks.sliceBy(perCollision, collision.globalIndex());
+
+      for (auto& track : groupedTracks) {
+        if (track.has_mcParticle()) {
+          const auto& mcParticle = track.mcParticle();
+          if (mcParticle.isPhysicalPrimary()) {
+            sameTpcTpcHH->getTrackHistEfficiency()->Fill(CorrelationContainer::RecoPrimaries, mcParticle.eta(), mcParticle.pt(), GetSpecies(mcParticle.pdgCode()), multiplicity, mcCollision.posZ());
+          }
+          sameTpcTpcHH->getTrackHistEfficiency()->Fill(CorrelationContainer::RecoAll, mcParticle.eta(), mcParticle.pt(), GetSpecies(mcParticle.pdgCode()), multiplicity, mcCollision.posZ());
+          // LOGF(info, "Filled track %d", track.globalIndex());
+        } else {
+          // fake track
+          sameTpcTpcHH->getTrackHistEfficiency()->Fill(CorrelationContainer::Fake, track.eta(), track.pt(), 0, multiplicity, mcCollision.posZ());
+        }
+      }
+    }
+  }
+  PROCESS_SWITCH(HfTaskFlow, processMCEfficiency, "MC: Extract efficiencies", false);
 
 };
 
