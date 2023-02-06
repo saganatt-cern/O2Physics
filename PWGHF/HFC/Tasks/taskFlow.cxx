@@ -194,6 +194,7 @@ struct HfTaskFlow {
     registry.add("hPt", "pT", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
     registry.add("hEta", "eta", {HistType::kTH1F, {{100, -4, 4, "#eta"}}});
     registry.add("hPhi", "phi", {HistType::kTH1F, {{100, 0, 2 * PI, "#varphi"}}});
+    registry.add("hVzEta", "eta vs. Vz", {HistType::kTH2F, {{100, -4, 4, "#eta"}, {20, -10, 10, "Vz"}}});
 
     //  histograms for particles in event mixing
     registry.add("hPtMixing", "pT", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
@@ -300,7 +301,7 @@ struct HfTaskFlow {
   }
 
   template <typename TTracks>
-  void fillQA(float multiplicity, TTracks tracks)
+  void fillQA(float multiplicity, float vz, TTracks tracks)
   {
     int Ntracks = 0;
     for (auto& track1 : tracks) {
@@ -308,6 +309,7 @@ struct HfTaskFlow {
       registry.fill(HIST("hPt"), track1.pt());
       registry.fill(HIST("hEta"), track1.eta());
       registry.fill(HIST("hPhi"), track1.phi());
+      registry.fill(HIST("hVzEta"), track1.eta(), vz);
       registry.fill(HIST("hYields"), multiplicity, track1.pt(), track1.eta());
       registry.fill(HIST("hEtaPhi"), multiplicity, track1.eta(), track1.phi());
     }
@@ -716,6 +718,10 @@ struct HfTaskFlow {
                             aod::BCsWithTimestamps const&,
                            aodTracks const& tracks)
   {
+    const auto multiplicity = tracks.size();
+    sameTpcTpcHH->fillEvent(multiplicity, CorrelationContainer::kCFStepBiasStudy);
+    fillCorrelations<CorrelationContainer::kCFStepBiasStudy>(sameTpcTpcHH, tracks, tracks, multiplicity, collision.posZ());
+
     if (!(isCollisionSelected(collision, true))) {
       return;
     }
@@ -725,7 +731,7 @@ struct HfTaskFlow {
     //  options are ran at the same time
     //  temporary solution, since other correlation options always have to be ran with h-h, too
     //  TODO: rewrite it in a more intelligent way
-    const auto multiplicity = tracks.size();
+    //const auto multiplicity = tracks.size();
     registry.fill(HIST("hMultiplicity"), multiplicity);
     registry.fill(HIST("hVtxZ"), collision.posZ());
 
@@ -736,7 +742,7 @@ struct HfTaskFlow {
     auto bc = collision.bc_as<aod::BCsWithTimestamps>();
     loadEfficiency(bc.timestamp(), "", "");
 
-    fillQA(multiplicity, tracks);
+    fillQA(multiplicity, collision.posZ(), tracks);
     //  fill raw correlations
     sameTpcTpcHH->fillEvent(multiplicity, CorrelationContainer::kCFStepReconstructed);
     fillCorrelations<CorrelationContainer::kCFStepReconstructed>(sameTpcTpcHH, tracks, tracks, multiplicity, collision.posZ());
@@ -844,8 +850,9 @@ struct HfTaskFlow {
     registry.fill(HIST("hMcMultiplicity"), multiplicity);
 
     //  fill correlations for all MC collisions
-    sameTpcTpcHH->fillEvent(multiplicity, CorrelationContainer::kCFStepAll);
-    fillCorrelations<CorrelationContainer::kCFStepAll>(sameTpcTpcHH, mcParticles, mcParticles, multiplicity, mcCollision.posZ());
+    const auto multPrimaryCharge0 = fillMcParticleQA<CorrelationContainer::kCFStepVertex>(mcParticles, false);
+    sameTpcTpcHH->fillEvent(multPrimaryCharge0, CorrelationContainer::kCFStepAll);
+    fillCorrelations<CorrelationContainer::kCFStepAll>(sameTpcTpcHH, mcParticles, mcParticles, multPrimaryCharge0, mcCollision.posZ());
 
     if (collisions.size() == 0) {
       return;
