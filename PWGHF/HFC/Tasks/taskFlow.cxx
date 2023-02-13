@@ -83,7 +83,8 @@ struct HfTaskFlow {
   //  configurables for containers
   ConfigurableAxis axisVertex{"axisVertex", {14, -7, 7}, "vertex axis for histograms"};
   ConfigurableAxis axisDeltaPhi{"axisDeltaPhi", {72, -PIHalf, PIHalf * 3}, "delta phi axis for histograms"};
-  ConfigurableAxis axisDeltaEta{"axisDeltaEta", {48, -2.4, 2.4}, "delta eta axis for histograms"};
+  ConfigurableAxis axisDeltaEta{"axisDeltaEta", {36, -1.8, 1.8}, "delta eta axis for histograms"};
+  ConfigurableAxis axisDeltaEtaMFT{"axisDeltaEtaMFT", {40, 1.0, 5.0}, "delta eta axis for histograms with MFT"};
   ConfigurableAxis axisPtTrigger{"axisPtTrigger", {VARIABLE_WIDTH, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0}, "pt trigger axis for histograms"};
   ConfigurableAxis axisPtAssoc{"axisPtAssoc", {VARIABLE_WIDTH, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0}, "pt associated axis for histograms"};
   ConfigurableAxis axisMultiplicity{"axisMultiplicity", {VARIABLE_WIDTH, 0, 5, 10, 20, 30, 40, 50, 100.1}, "multiplicity axis for histograms"};
@@ -123,6 +124,10 @@ struct HfTaskFlow {
     registry.add("sameTpcTpcHH/hMultiplicity", "hMultiplicity", {HistType::kTH1F, {{500, 0, 500}}});
     registry.add("sameTpcTpcHH/hVtxZ", "hVtxZ", {HistType::kTH1F, {{400, -50, 50}}});
     registry.add("sameTpcTpcHH/hNtracks", "hNtracks", {HistType::kTH1F, {{500, 0, 500}}});
+    registry.add("sameTpcTpcHfH/hMultiplicity", "hMultiplicity", {HistType::kTH1F, {{500, 0, 500}}});
+    registry.add("sameTpcTpcHfH/hVtxZ", "hVtxZ", {HistType::kTH1F, {{400, -50, 50}}});
+    registry.add("sameTpcMftHH/hMultiplicity", "hMultiplicity", {HistType::kTH1F, {{500, 0, 500}}});
+    registry.add("sameTpcMftHH/hVtxZ", "hVtxZ", {HistType::kTH1F, {{400, -50, 50}}});
 
     //  histograms for event mixing
     const int maxMixBin = axisMultiplicity->size() * 14; // 14 bins for z-vertex
@@ -153,6 +158,7 @@ struct HfTaskFlow {
     registry.add("sameTpcMftHH/hEtaPhi", "multiplicity vs eta vs phi in MFT", {HistType::kTH3F, {{200, 0, 200, "multiplicity"}, {100, -2, 2, "#eta"}, {200, 0, 2 * PI, "#varphi"}}});
     registry.add("sameTpcMftHH/hEta", "eta", {HistType::kTH1F, {{100, -4, 4, "#eta"}}});
     registry.add("sameTpcMftHH/hPhi", "phi", {HistType::kTH1F, {{100, 0, 2 * PI, "#varphi"}}});
+    registry.add("sameTpcMftHH/hPt", "pt", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
 
     //  histograms for candidates
     auto vbins = (std::vector<double>)binsPt;
@@ -191,12 +197,18 @@ struct HfTaskFlow {
                                      {axisPtEfficiency, "p_{T} (GeV/c)"},
                                      {axisVertexEfficiency, "z-vtx (cm)"}};
     std::vector<AxisSpec> userAxis = {{axisMass, "m_{inv} (GeV/c^{2})"}};
+    std::vector<AxisSpec> corrAxisMFT = {{axisDeltaEtaMFT, "#Delta#eta"},
+                                        {axisPtAssoc, "p_{T} (GeV/c)"},
+                                        {axisPtTrigger, "p_{T} (GeV/c)"},
+                                        {axisMultiplicity, "multiplicity"},
+                                        {axisDeltaPhi, "#Delta#varphi (rad)"},
+                                        {axisVertex, "z-vtx (cm)"}};
 
     sameTpcTpcHH.setObject(new CorrelationContainer("sameEventTpcTpcHH", "sameEventTpcTpcHH", corrAxis, effAxis, {}));
-    sameTpcMftHH.setObject(new CorrelationContainer("sameEventTpcMftHH", "sameEventTpcMftHH", corrAxis, effAxis, {}));
+    sameTpcMftHH.setObject(new CorrelationContainer("sameEventTpcMftHH", "sameEventTpcMftHH", corrAxisMFT, effAxis, {}));
     sameTpcTpcHfH.setObject(new CorrelationContainer("sameEventTpcTpcHfH", "sameEventTpcTpcHfH", corrAxis, effAxis, userAxis));
     mixedTpcTpcHH.setObject(new CorrelationContainer("mixedEventTpcTpcHH", "mixedEventTpcTpcHH", corrAxis, effAxis, {}));
-    mixedTpcMftHH.setObject(new CorrelationContainer("mixedEventTpcMftHH", "mixedEventTpcMftHH", corrAxis, effAxis, {}));
+    mixedTpcMftHH.setObject(new CorrelationContainer("mixedEventTpcMftHH", "mixedEventTpcMftHH", corrAxisMFT, effAxis, {}));
     mixedTpcTpcHfH.setObject(new CorrelationContainer("mixedEventTpcTpcHfH", "mixedEventTpcTpcHfH", corrAxis, effAxis, userAxis));
   }
 
@@ -288,11 +300,12 @@ struct HfTaskFlow {
   void fillMFTQA(float multiplicity, TTracks tracks)
   {
     for (auto& track1 : tracks) {
-      registry.fill(HIST("sameTpcMftHH/hEtaMFT"), track1.eta());
+      registry.fill(HIST("sameTpcMftHH/hEta"), track1.eta());
       float phi = track1.phi();
       o2::math_utils::bringTo02Pi(phi);
-      registry.fill(HIST("sameTpcMftHH/hPhiMFT"), phi);
-      registry.fill(HIST("sameTpcMftHH/hEtaPhiMFT"), multiplicity, track1.eta(), phi);
+      registry.fill(HIST("sameTpcMftHH/hPhi"), phi);
+      registry.fill(HIST("sameTpcMftHH/hPt"), track1.pt());
+      registry.fill(HIST("sameTpcMftHH/hEtaPhi"), multiplicity, track1.eta(), phi);
     }
   }
 
@@ -446,7 +459,13 @@ struct HfTaskFlow {
       auto binningValues = binningWithTracksSize.getBinningValues(collision1, collisions);
       int bin = binningWithTracksSize.getBin(binningValues);
 
-      const auto multiplicity = tracks2.size(); // get multiplicity of charged hadrons, which is used for slicing in mixing
+      // get multiplicity of charged hadrons, which is used for slicing in mixing
+      float multiplicity = 0;
+      if constexpr (std::is_same_v<o2::aod::MFTTracks, TTracksAssoc>) {
+        multiplicity = tracks1.size();
+      } else {
+        multiplicity = tracks2.size();
+      }
       const auto vz = collision1.posZ();
 
       if constexpr (std::is_same_v<hfCandidates, TTracksTrig>) {
@@ -528,7 +547,6 @@ struct HfTaskFlow {
   }
   PROCESS_SWITCH(HfTaskFlow, processSameTpcMftHH, "Process same-event correlations for h-MFT case", true);
 
-  //  TODO: add also MFT option
   // =====================================
   //    process mixed event correlations: h-h case
   // =====================================
@@ -563,6 +581,25 @@ struct HfTaskFlow {
     mixCollisions(collisions, candidates, tracks, getTracksSize, mixedTpcTpcHfH);
   }
   PROCESS_SWITCH(HfTaskFlow, processMixedTpcTpcHfH, "Process mixed-event correlations for HF-h case", true);
+
+  // =====================================
+  //    process mixed event correlations: h-MFT case
+  // =====================================
+  void processMixedTpcMftHH(aodCollisions& collisions,
+                            aodTracks& tracks,
+                            aod::MFTTracks& mfttracks)
+  {
+    //  we want to group collisions based on charged-track multiplicity
+    auto getTracksSize = [&tracks](aodCollisions::iterator const& col) {
+      auto associatedTracks = tracks.sliceByCached(o2::aod::track::collisionId, col.globalIndex()); // it's cached, so slicing/grouping happens only once
+      auto size = associatedTracks.size();
+      return size;
+    };
+
+    mixCollisions(collisions, tracks, mfttracks, getTracksSize, mixedTpcMftHH);
+  }
+  PROCESS_SWITCH(HfTaskFlow, processMixedTpcMftHH, "Process mixed-event correlations for h-MFT case", true);
+
 };
 
 WorkflowSpec defineDataProcessing(ConfigContext const& cfgc)
