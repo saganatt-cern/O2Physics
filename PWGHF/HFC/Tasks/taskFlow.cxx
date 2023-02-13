@@ -101,6 +101,7 @@ struct HfTaskFlow {
   OutputObj<CorrelationContainer> sameTpcMftHH{"sameEventTpcMftHH"};
   OutputObj<CorrelationContainer> sameTpcTpcHfH{"sameEventTpcTpcHfH"};
   OutputObj<CorrelationContainer> mixedTpcTpcHH{"mixedEventTpcTpcHH"};
+  OutputObj<CorrelationContainer> mixedTpcMftHH{"mixedEventTpcMftHH"};
   OutputObj<CorrelationContainer> mixedTpcTpcHfH{"mixedEventTpcTpcHfH"};
 
   //  =========================
@@ -119,39 +120,39 @@ struct HfTaskFlow {
     for (int iBin = 0; iBin < nBins; iBin++) {
       registry.get<TH1>(HIST("hEventCounter"))->GetXaxis()->SetBinLabel(iBin + 1, labels[iBin].data());
     }
-    registry.add("hMultiplicity", "hMultiplicity", {HistType::kTH1F, {{500, 0, 500}}});
-    registry.add("hVtxZ", "hVtxZ", {HistType::kTH1F, {{400, -50, 50}}});
-    registry.add("hNtracks", "hNtracks", {HistType::kTH1F, {{500, 0, 500}}});
+    registry.add("sameTpcTpcHH/hMultiplicity", "hMultiplicity", {HistType::kTH1F, {{500, 0, 500}}});
+    registry.add("sameTpcTpcHH/hVtxZ", "hVtxZ", {HistType::kTH1F, {{400, -50, 50}}});
+    registry.add("sameTpcTpcHH/hNtracks", "hNtracks", {HistType::kTH1F, {{500, 0, 500}}});
 
     //  histograms for event mixing
     const int maxMixBin = axisMultiplicity->size() * 14; // 14 bins for z-vertex
     registry.add("hEventCountMixing", "bin", {HistType::kTH1F, {{maxMixBin + 2, -2.5, -0.5 + maxMixBin, "bin"}}});
     registry.add("hEventCountHFMixing", "bin", {HistType::kTH1F, {{maxMixBin + 2, -2.5, -0.5 + maxMixBin, "bin"}}});
     registry.add("hEventCountSame", "bin", {HistType::kTH1F, {{maxMixBin + 2, -2.5, -0.5 + maxMixBin, "bin"}}});
-    registry.add("hMultiplicityMixing", "hMultiplicityMixing", {HistType::kTH1F, {{500, 0, 500}}});
-    registry.add("hVtxZMixing", "hVtxZMixing", {HistType::kTH1F, {{100, -10, 10}}});
-    registry.add("hNtracksMixing", "hNtracksMixing", {HistType::kTH1F, {{500, 0, 500}}});
-    registry.add("hMultiplicityHFMixing", "hMultiplicityHFMixing", {HistType::kTH1F, {{500, 0, 500}}});
-    registry.add("hVtxZHFMixing", "hVtxZHFMixing", {HistType::kTH1F, {{100, -10, 10}}});
-    registry.add("hNtracksHFMixing", "hNtracksHFMixing", {HistType::kTH1F, {{500, 0, 500}}});
+    registry.add("mixedTpcTpcHH/hMultiplicity", "hMultiplicity", {HistType::kTH1F, {{500, 0, 500}}});
+    registry.add("mixedTpcTpcHH/hVtxZ", "hVtxZ", {HistType::kTH1F, {{100, -10, 10}}});
+    registry.add("mixedTpcTpcHH/hNtracks", "hNtracks", {HistType::kTH1F, {{500, 0, 500}}});
+    registry.add("mixedTpcTpcHfH/hMultiplicity", "hMultiplicity", {HistType::kTH1F, {{500, 0, 500}}});
+    registry.add("mixedTpcTpcHfH/hVtxZ", "hVtxZ", {HistType::kTH1F, {{100, -10, 10}}});
+    registry.add("mixedTpcTpcHfH/hNtracks", "hNtracks", {HistType::kTH1F, {{500, 0, 500}}});
 
     //  TRACK HISTOGRAMS
     //  histograms for associated particles
-    registry.add("hYields", "multiplicity vs pT vs eta", {HistType::kTH3F, {{200, 0, 200, "multiplicity"}, {40, 0, 20, "p_{T}"}, {100, -2, 2, "#eta"}}});
-    registry.add("hEtaPhi", "multiplicity vs eta vs phi", {HistType::kTH3F, {{200, 0, 200, "multiplicity"}, {100, -2, 2, "#eta"}, {200, 0, 2 * PI, "#varphi"}}});
-    registry.add("hPt", "pT", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
-    registry.add("hEta", "eta", {HistType::kTH1F, {{100, -4, 4, "#eta"}}});
-    registry.add("hPhi", "phi", {HistType::kTH1F, {{100, 0, 2 * PI, "#varphi"}}});
+    registry.add("sameTpcTpcHH/hYields", "multiplicity vs pT vs eta", {HistType::kTH3F, {{200, 0, 200, "multiplicity"}, {40, 0, 20, "p_{T}"}, {100, -2, 2, "#eta"}}});
+    registry.add("sameTpcTpcHH/hEtaPhi", "multiplicity vs eta vs phi", {HistType::kTH3F, {{200, 0, 200, "multiplicity"}, {100, -2, 2, "#eta"}, {200, 0, 2 * PI, "#varphi"}}});
+    registry.add("sameTpcTpcHH/hPt", "pT", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
+    registry.add("sameTpcTpcHH/hEta", "eta", {HistType::kTH1F, {{100, -4, 4, "#eta"}}});
+    registry.add("sameTpcTpcHH/hPhi", "phi", {HistType::kTH1F, {{100, 0, 2 * PI, "#varphi"}}});
 
     //  histograms for particles in event mixing
-    registry.add("hPtMixing", "pT", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
-    registry.add("hEtaMixing", "eta", {HistType::kTH1F, {{100, -4, 4, "#eta"}}});
-    registry.add("hPhiMixing", "phi", {HistType::kTH1F, {{100, 0, 2 * PI, "#varphi"}}});
+    registry.add("mixedTpcTpcHH/hPt", "pT", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
+    registry.add("mixedTpcTpcHH/hEta", "eta", {HistType::kTH1F, {{100, -4, 4, "#eta"}}});
+    registry.add("mixedTpcTpcHH/hPhi", "phi", {HistType::kTH1F, {{100, 0, 2 * PI, "#varphi"}}});
 
     //  histograms for MFT tracks
-    registry.add("hEtaPhiMFT", "multiplicity vs eta vs phi in MFT", {HistType::kTH3F, {{200, 0, 200, "multiplicity"}, {100, -2, 2, "#eta"}, {200, 0, 2 * PI, "#varphi"}}});
-    registry.add("hEtaMFT", "etaMFT", {HistType::kTH1F, {{100, -4, 4, "#eta"}}});
-    registry.add("hPhiMFT", "phiMFT", {HistType::kTH1F, {{100, 0, 2 * PI, "#varphi"}}});
+    registry.add("sameTpcMftHH/hEtaPhi", "multiplicity vs eta vs phi in MFT", {HistType::kTH3F, {{200, 0, 200, "multiplicity"}, {100, -2, 2, "#eta"}, {200, 0, 2 * PI, "#varphi"}}});
+    registry.add("sameTpcMftHH/hEta", "eta", {HistType::kTH1F, {{100, -4, 4, "#eta"}}});
+    registry.add("sameTpcMftHH/hPhi", "phi", {HistType::kTH1F, {{100, 0, 2 * PI, "#varphi"}}});
 
     //  histograms for candidates
     auto vbins = (std::vector<double>)binsPt;
@@ -175,9 +176,9 @@ struct HfTaskFlow {
     registry.add("hDecLenXYErr", "2-prong candidates;decay length xy error (cm);entries", {HistType::kTH2F, {{100, 0., 1.}, {vbins, "#it{p}_{T} (GeV/#it{c})"}}});
 
     //  histograms for candidates in event mixing
-    registry.add("hPtHFMixing", "pT", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
-    registry.add("hEtaHFMixing", "eta", {HistType::kTH1F, {{100, -4, 4, "#eta"}}});
-    registry.add("hPhiHFMixing", "phi", {HistType::kTH1F, {{100, 0, 2 * PI, "#varphi"}}});
+    registry.add("mixedTpcTpcHfH/hPt", "pT", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
+    registry.add("mixedTpcTpcHfH/hEta", "eta", {HistType::kTH1F, {{100, -4, 4, "#eta"}}});
+    registry.add("mixedTpcTpcHfH/hPhi", "phi", {HistType::kTH1F, {{100, 0, 2 * PI, "#varphi"}}});
 
     //  set axes of the correlation container
     std::vector<AxisSpec> corrAxis = {{axisDeltaEta, "#Delta#eta"},
@@ -195,6 +196,7 @@ struct HfTaskFlow {
     sameTpcMftHH.setObject(new CorrelationContainer("sameEventTpcMftHH", "sameEventTpcMftHH", corrAxis, effAxis, {}));
     sameTpcTpcHfH.setObject(new CorrelationContainer("sameEventTpcTpcHfH", "sameEventTpcTpcHfH", corrAxis, effAxis, userAxis));
     mixedTpcTpcHH.setObject(new CorrelationContainer("mixedEventTpcTpcHH", "mixedEventTpcTpcHH", corrAxis, effAxis, {}));
+    mixedTpcMftHH.setObject(new CorrelationContainer("mixedEventTpcMftHH", "mixedEventTpcMftHH", corrAxis, effAxis, {}));
     mixedTpcTpcHfH.setObject(new CorrelationContainer("mixedEventTpcTpcHfH", "mixedEventTpcTpcHfH", corrAxis, effAxis, userAxis));
   }
 
@@ -241,56 +243,56 @@ struct HfTaskFlow {
     int Ntracks = 0;
     for (auto& track1 : tracks) {
       Ntracks++;
-      registry.fill(HIST("hPt"), track1.pt());
-      registry.fill(HIST("hEta"), track1.eta());
-      registry.fill(HIST("hPhi"), track1.phi());
-      registry.fill(HIST("hYields"), multiplicity, track1.pt(), track1.eta());
-      registry.fill(HIST("hEtaPhi"), multiplicity, track1.eta(), track1.phi());
+      registry.fill(HIST("sameTpcTpcHH/hPt"), track1.pt());
+      registry.fill(HIST("sameTpcTpcHH/hEta"), track1.eta());
+      registry.fill(HIST("sameTpcTpcHH/hPhi"), track1.phi());
+      registry.fill(HIST("sameTpcTpcHH/hYields"), multiplicity, track1.pt(), track1.eta());
+      registry.fill(HIST("sameTpcTpcHH/hEtaPhi"), multiplicity, track1.eta(), track1.phi());
     }
-    registry.fill(HIST("hNtracks"), Ntracks);
+    registry.fill(HIST("sameTpcTpcHH/hNtracks"), Ntracks);
   }
 
   template <typename TTracks>
   void fillMixingQA(float multiplicity, float vz, TTracks tracks)
   {
-    registry.fill(HIST("hMultiplicityMixing"), multiplicity);
-    registry.fill(HIST("hVtxZMixing"), vz);
+    registry.fill(HIST("mixedTpcTpcHH/hMultiplicity"), multiplicity);
+    registry.fill(HIST("mixedTpcTpcHH/hVtxZ"), vz);
 
     int Ntracks = 0;
     for (auto& track1 : tracks) {
       Ntracks++;
-      registry.fill(HIST("hPtMixing"), track1.pt());
-      registry.fill(HIST("hEtaMixing"), track1.eta());
-      registry.fill(HIST("hPhiMixing"), track1.phi());
+      registry.fill(HIST("mixedTpcTpcHH/hPt"), track1.pt());
+      registry.fill(HIST("mixedTpcTpcHH/hEta"), track1.eta());
+      registry.fill(HIST("mixedTpcTpcHH/hPhi"), track1.phi());
     }
-    registry.fill(HIST("hNtracksMixing"), Ntracks);
+    registry.fill(HIST("mixedTpcTpcHH/hNtracks"), Ntracks);
   }
 
   template <typename TTracks>
   void fillHFMixingQA(float multiplicity, float vz, TTracks tracks)
   {
-    registry.fill(HIST("hMultiplicityHFMixing"), multiplicity);
-    registry.fill(HIST("hVtxZHFMixing"), vz);
+    registry.fill(HIST("mixedTpcTpcHfH/hMultiplicity"), multiplicity);
+    registry.fill(HIST("mixedTpcTpcHfH/hVtxZ"), vz);
 
     int Ntracks = 0;
     for (auto& track1 : tracks) {
       Ntracks++;
-      registry.fill(HIST("hPtHFMixing"), track1.pt());
-      registry.fill(HIST("hEtaHFMixing"), track1.eta());
-      registry.fill(HIST("hPhiHFMixing"), track1.phi());
+      registry.fill(HIST("mixedTpcTpcHfH/hPt"), track1.pt());
+      registry.fill(HIST("mixedTpcTpcHfH/hEta"), track1.eta());
+      registry.fill(HIST("mixedTpcTpcHfH/hPhi"), track1.phi());
     }
-    registry.fill(HIST("hNtracksHFMixing"), Ntracks);
+    registry.fill(HIST("mixedTpcTpcHfH/hNtracks"), Ntracks);
   }
 
   template <typename TTracks>
   void fillMFTQA(float multiplicity, TTracks tracks)
   {
     for (auto& track1 : tracks) {
-      registry.fill(HIST("hEtaMFT"), track1.eta());
+      registry.fill(HIST("sameTpcMftHH/hEtaMFT"), track1.eta());
       float phi = track1.phi();
       o2::math_utils::bringTo02Pi(phi);
-      registry.fill(HIST("hPhiMFT"), phi);
-      registry.fill(HIST("hEtaPhiMFT"), multiplicity, track1.eta(), phi);
+      registry.fill(HIST("sameTpcMftHH/hPhiMFT"), phi);
+      registry.fill(HIST("sameTpcMftHH/hEtaPhiMFT"), multiplicity, track1.eta(), phi);
     }
   }
 
@@ -470,14 +472,9 @@ struct HfTaskFlow {
       return;
     }
 
-    //  the event histograms below are only filled for h-h case
-    //  because there is a possibility of double-filling if more correlation
-    //  options are ran at the same time
-    //  temporary solution, since other correlation options always have to be ran with h-h, too
-    //  TODO: rewrite it in a more intelligent way
     const auto multiplicity = tracks.size();
-    registry.fill(HIST("hMultiplicity"), multiplicity);
-    registry.fill(HIST("hVtxZ"), collision.posZ());
+    registry.fill(HIST("sameTpcTpcHH/hMultiplicity"), multiplicity);
+    registry.fill(HIST("sameTpcTpcHH/hVtxZ"), collision.posZ());
 
     BinningPolicyBase<2> baseBinning{{axisVertex, axisMultiplicity}, true};
     int bin = baseBinning.getBin(std::make_tuple(collision.posZ(), multiplicity));
@@ -501,6 +498,8 @@ struct HfTaskFlow {
     }
 
     const auto multiplicity = tracks.size();
+    registry.fill(HIST("sameTpcTpcHfH/hMultiplicity"), multiplicity);
+    registry.fill(HIST("sameTpcTpcHfH/hVtxZ"), collision.posZ());
 
     sameTpcTpcHfH->fillEvent(multiplicity, CorrelationContainer::kCFStepReconstructed);
     fillCandidateQA(candidates);
@@ -520,6 +519,8 @@ struct HfTaskFlow {
     }
 
     const auto multiplicity = tracks.size();
+    registry.fill(HIST("sameTpcMftHH/hMultiplicity"), multiplicity);
+    registry.fill(HIST("sameTpcMftHH/hVtxZ"), collision.posZ());
 
     sameTpcMftHH->fillEvent(multiplicity, CorrelationContainer::kCFStepReconstructed);
     fillMFTQA(multiplicity, mfttracks);
