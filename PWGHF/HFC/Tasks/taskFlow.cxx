@@ -97,11 +97,11 @@ struct HfTaskFlow {
 
   HistogramRegistry registry{"registry"};
 
-  OutputObj<CorrelationContainer> sameTpcTpcHH{"sameEventTPCTPCChHadrons"};
-  OutputObj<CorrelationContainer> sameTpcMftHH{"sameEventTPCMFTChHadrons"};
-  OutputObj<CorrelationContainer> sameTpcTpcHfH{"sameEventHFHadrons"};
-  OutputObj<CorrelationContainer> mixedTpcTpcHH{"mixedEventTPCTPCChHadrons"};
-  OutputObj<CorrelationContainer> mixedTpcTpcHfH{"mixedEventHFHadrons"};
+  OutputObj<CorrelationContainer> sameTpcTpcHH{"sameEventTpcTpcHH"};
+  OutputObj<CorrelationContainer> sameTpcMftHH{"sameEventTpcMftHH"};
+  OutputObj<CorrelationContainer> sameTpcTpcHfH{"sameEventTpcTpcHfH"};
+  OutputObj<CorrelationContainer> mixedTpcTpcHH{"mixedEventTpcTpcHH"};
+  OutputObj<CorrelationContainer> mixedTpcTpcHfH{"mixedEventTpcTpcHfH"};
 
   //  =========================
   //      init()
@@ -191,11 +191,11 @@ struct HfTaskFlow {
                                      {axisVertexEfficiency, "z-vtx (cm)"}};
     std::vector<AxisSpec> userAxis = {{axisMass, "m_{inv} (GeV/c^{2})"}};
 
-    sameTpcTpcHH.setObject(new CorrelationContainer("sameEventTPCTPCChHadrons", "sameEventTPCTPCChHadrons", corrAxis, effAxis, {}));
-    sameTpcMftHH.setObject(new CorrelationContainer("sameEventTPCMFTChHadrons", "sameEventTPCMFTChHadrons", corrAxis, effAxis, {}));
-    sameTpcTpcHfH.setObject(new CorrelationContainer("sameEventHFHadrons", "sameEventHFHadrons", corrAxis, effAxis, userAxis));
-    mixedTpcTpcHH.setObject(new CorrelationContainer("mixedEventTPCTPCChHadrons", "mixedEventTPCTPCChHadrons", corrAxis, effAxis, {}));
-    mixedTpcTpcHfH.setObject(new CorrelationContainer("mixedEventHFHadrons", "mixedEventHFHadrons", corrAxis, effAxis, userAxis));
+    sameTpcTpcHH.setObject(new CorrelationContainer("sameEventTpcTpcHH", "sameEventTpcTpcHH", corrAxis, effAxis, {}));
+    sameTpcMftHH.setObject(new CorrelationContainer("sameEventTpcMftHH", "sameEventTpcMftHH", corrAxis, effAxis, {}));
+    sameTpcTpcHfH.setObject(new CorrelationContainer("sameEventTpcTpcHfH", "sameEventTpcTpcHfH", corrAxis, effAxis, userAxis));
+    mixedTpcTpcHH.setObject(new CorrelationContainer("mixedEventTpcTpcHH", "mixedEventTpcTpcHH", corrAxis, effAxis, {}));
+    mixedTpcTpcHfH.setObject(new CorrelationContainer("mixedEventTpcTpcHfH", "mixedEventTpcTpcHfH", corrAxis, effAxis, userAxis));
   }
 
   //  ---------------
