@@ -17,6 +17,7 @@
 #include "Framework/AnalysisTask.h"
 #include "Framework/AnalysisDataModel.h"
 #include "Framework/ASoAHelpers.h"
+#include "Framework/O2DatabasePDGPlugin.h"
 #include "CCDB/BasicCCDBManager.h"
 #include "Framework/GroupSlicer.h"
 #include "Framework/StepTHn.h"
@@ -48,6 +49,8 @@ using namespace o2::aod::hf_cand_2prong;
 using namespace o2::analysis::hf_cuts_d0_to_pi_k;
 
 struct HfTaskFlow {
+  Service<O2DatabasePDG> pdg;
+
   //  configurables for processing options
   Configurable<bool> processRun2{"processRun2", false, "Flag to run on Run 2 data"};
   Configurable<bool> processRun3{"processRun3", true, "Flag to run on Run 3 data"};
@@ -74,6 +77,10 @@ struct HfTaskFlow {
                        (aod::track::pt > ptTrackAssocMin) &&
                        requireGlobalTrackWoPtEtaInFilter();
   using aodTracks = soa::Filtered<soa::Join<aod::Tracks, aod::TracksDCA, aod::TrackSelection>>;
+
+  //  MC collision filters
+  Filter mcCollisionFilter = nabs(aod::mccollision::posZ) < zVertexMax;
+  using aodMcCollisions = soa::Filtered<aod::McCollisions>;
 
   //  HF candidate filter
   //  TODO: use Partition instead of filter
@@ -195,6 +202,28 @@ struct HfTaskFlow {
     registry.add("mixedTpcTpcHfH/hPt", "pT", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
     registry.add("mixedTpcTpcHfH/hEta", "eta", {HistType::kTH1F, {{100, -4, 4, "#eta"}}});
     registry.add("mixedTpcTpcHfH/hPhi", "phi", {HistType::kTH1F, {{100, 0, 2 * PI, "#varphi"}}});
+
+    //  MONTE CARLO
+    registry.add("sameMcTpcMftHH/hMultiplicity", "hMultiplicity", {HistType::kTH1F, {{500, 0, 500}}});
+    registry.add("sameMcTpcMftHH/hVtxZ", "hVtxZ", {HistType::kTH1F, {{400, -50, 50}}});
+    registry.add("sameMcTpcMftHH/hEta", "eta", {HistType::kTH1F, {{100, -4, 4, "#eta"}}});
+    registry.add("sameMcTpcMftHH/hPhi", "phi", {HistType::kTH1F, {{100, 0, 2 * PI, "#varphi"}}});
+    registry.add("sameMcTpcMftHH/hPt", "pt", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
+    registry.add("sameMcTpcMftHH/hMultiplicityMft", "hMultiplicity", {HistType::kTH1F, {{500, 0, 500}}});
+    registry.add("sameMcTpcMftHH/hEtaMft", "eta", {HistType::kTH1F, {{100, -4, 4, "#eta"}}});
+    registry.add("sameMcTpcMftHH/hPhiMft", "phi", {HistType::kTH1F, {{100, 0, 2 * PI, "#varphi"}}});
+    registry.add("sameMcTpcMftHH/hPtMft", "pt", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
+    //  event mixing
+    registry.add("hEventCountMcMixing", "bin", {HistType::kTH1F, {{maxMixBin + 2, -2.5, -0.5 + maxMixBin, "bin"}}});
+    registry.add("mixedMcTpcMftHH/hMultiplicity", "hMultiplicity", {HistType::kTH1F, {{500, 0, 500}}});
+    registry.add("mixedMcTpcMftHH/hVtxZ", "hVtxZ", {HistType::kTH1F, {{100, -10, 10}}});
+    registry.add("mixedMcTpcMftHH/hEta", "eta", {HistType::kTH1F, {{100, -4, 4, "#eta"}}});
+    registry.add("mixedMcTpcMftHH/hPhi", "phi", {HistType::kTH1F, {{100, 0, 2 * PI, "#varphi"}}});
+    registry.add("mixedMcTpcMftHH/hPt", "pt", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
+    registry.add("mixedMcTpcMftHH/hEtaMft", "eta", {HistType::kTH1F, {{100, -4, 4, "#eta"}}});
+    registry.add("mixedMcTpcMftHH/hPhiMft", "phi", {HistType::kTH1F, {{100, 0, 2 * PI, "#varphi"}}});
+    registry.add("mixedMcTpcMftHH/hPtMft", "pt", {HistType::kTH1F, {{100, 0, 10, "p_{T}"}}});
+    registry.add("mixedMcTpcMftHH/hMultiplicityAllMcParticles", "hMultiplicity", {HistType::kTH1F, {{1000, 0, 1000}}});
 
     //  set axes of the correlation container
     std::vector<AxisSpec> corrAxis = {{axisDeltaEta, "#Delta#eta"},
@@ -389,13 +418,127 @@ struct HfTaskFlow {
     }
   }
 
-  template <typename TTarget, typename TTracksTrig, typename TTracksAssoc>
+  template <typename TTrack>
+  bool isMcParticleSelected(TTrack& track, bool tpcacceptance)
+  {
+    //  remove MC particles with charge = 0
+    int8_t sign = 0;
+    TParticlePDG* pdgparticle = pdg->GetParticle(track.pdgCode());
+    if (pdgparticle != nullptr) {
+      sign = (pdgparticle->Charge() > 0) ? 1.0 : ((pdgparticle->Charge() < 0) ? -1.0 : 0.0);
+    }
+    if (sign == 0) {
+      return false;
+    }
+
+    //  MC particle has to be primary
+    if (!track.isPhysicalPrimary()) {
+      return false;
+    }
+
+    //  MC particle pt
+    if (track.pt() < ptTrackAssocMin) {
+      return false;
+    }
+
+    //  MC particle eta, either within TPC or MFT acceptance
+    if (tpcacceptance) {
+      if (track.eta() < -etaTrackAssocMax || track.eta() > etaTrackAssocMax) {
+        return false;
+      }
+    } else {
+      if (track.eta() < -4.0 || track.eta() > -2.0) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  template <typename TTracks>
+  int fillMcParticleQA(TTracks mcparticles, bool fillHist)
+  {
+    int Nparticles = 0;
+    for (auto& mcparticle : mcparticles) {
+      if (!isMcParticleSelected(mcparticle, true)) {
+        continue;
+      }
+      Nparticles++;
+      if (fillHist) {
+        registry.fill(HIST("sameMcTpcMftHH/hPt"), mcparticle.pt());
+        registry.fill(HIST("sameMcTpcMftHH/hEta"), mcparticle.eta());
+        registry.fill(HIST("sameMcTpcMftHH/hPhi"), mcparticle.phi());
+      }
+    }
+    if (fillHist) {
+      registry.fill(HIST("sameMcTpcMftHH/hMultiplicity"), Nparticles);
+    }
+    return Nparticles;
+  }
+
+  template <typename TTracks>
+  void fillMcParticleMftQA(TTracks mcparticles, bool fillHist)
+  {
+    int Nparticles = 0;
+    for (auto& mcparticle : mcparticles) {
+      if (!isMcParticleSelected(mcparticle, false)) {
+        continue;
+      }
+      Nparticles++;
+      if (fillHist) {
+        registry.fill(HIST("sameMcTpcMftHH/hPtMft"), mcparticle.pt());
+        registry.fill(HIST("sameMcTpcMftHH/hEtaMft"), mcparticle.eta());
+        registry.fill(HIST("sameMcTpcMftHH/hPhiMft"), mcparticle.phi());
+      }
+    }
+    if (fillHist) {
+      registry.fill(HIST("sameMcTpcMftHH/hMultiplicityMft"), Nparticles);
+    }
+  }
+
+  template <typename TTracks>
+  void fillMcMixingQA(float multiplicity, float vz, TTracks mcparticles)
+  {
+    registry.fill(HIST("mixedMcTpcMftHH/hMultiplicity"), multiplicity);
+    registry.fill(HIST("mixedMcTpcMftHH/hVtxZ"), vz);
+
+    for (auto& mcparticle : mcparticles) {
+      if (!isMcParticleSelected(mcparticle, true)) {
+        continue;
+      }
+      registry.fill(HIST("mixedMcTpcMftHH/hPt"), mcparticle.pt());
+      registry.fill(HIST("mixedMcTpcMftHH/hEta"), mcparticle.eta());
+      registry.fill(HIST("mixedMcTpcMftHH/hPhi"), mcparticle.phi());
+    }
+  }
+
+  template <typename TTracks>
+  void fillMcMixingMftQA(TTracks mcparticles)
+  {
+    for (auto& mcparticle : mcparticles) {
+      if (!isMcParticleSelected(mcparticle, false)) {
+        continue;
+      }
+      registry.fill(HIST("mixedMcTpcMftHH/hPtMft"), mcparticle.pt());
+      registry.fill(HIST("mixedMcTpcMftHH/hEtaMft"), mcparticle.eta());
+      registry.fill(HIST("mixedMcTpcMftHH/hPhiMft"), mcparticle.phi());
+    }
+  }
+
+  template <CorrelationContainer::CFStep step, typename TTarget, typename TTracksTrig, typename TTracksAssoc>
   void fillCorrelations(TTarget target, TTracksTrig tracks1, TTracksAssoc tracks2, float multiplicity, float posZ)
   {
     auto triggerWeight = 1;
     auto associatedWeight = 1;
 
     for (auto& track1 : tracks1) {
+
+      //  additional particle selection on MCparticles
+      if constexpr (step <= CorrelationContainer::kCFStepTracked) {
+        if (!isMcParticleSelected(track1, true)) {//  true to have particles within TPC acceptance
+          continue;
+        }
+      }
 
       float eta1 = track1.eta();
       float pt1 = track1.pt();
@@ -419,9 +562,9 @@ struct HfTaskFlow {
 
       //  fill single-track distributions
       if (!fillingHFcontainer) {
-        target->getTriggerHist()->Fill(CorrelationContainer::kCFStepReconstructed, pt1, multiplicity, posZ, triggerWeight);
+        target->getTriggerHist()->Fill(step, pt1, multiplicity, posZ, triggerWeight);
       } else {
-        target->getTriggerHist()->Fill(CorrelationContainer::kCFStepReconstructed, pt1, multiplicity, posZ, invmass, triggerWeight);
+        target->getTriggerHist()->Fill(step, pt1, multiplicity, posZ, invmass, triggerWeight);
       }
 
       for (auto& track2 : tracks2) {
@@ -442,6 +585,13 @@ struct HfTaskFlow {
           }
         }
 
+        //  additional particle selection on MCparticles
+        if constexpr (step <= CorrelationContainer::kCFStepTracked) {
+          if (!isMcParticleSelected(track2, false)) {// false for particles within MFT acceptance
+            continue;
+          }
+        }
+
         float eta2 = track2.eta();
         float pt2 = track2.pt();
         float phi2 = track2.phi();
@@ -457,11 +607,11 @@ struct HfTaskFlow {
 
         if (!fillingHFcontainer) {
           //  fill pair correlations
-          target->getPairHist()->Fill(CorrelationContainer::kCFStepReconstructed,
+          target->getPairHist()->Fill(step,
                                       eta1 - eta2, pt2, pt1, multiplicity, deltaPhi, posZ,
                                       triggerWeight * associatedWeight);
         } else {
-          target->getPairHist()->Fill(CorrelationContainer::kCFStepReconstructed,
+          target->getPairHist()->Fill(step,
                                       eta1 - eta2, pt2, pt1, multiplicity, deltaPhi, posZ, invmass,
                                       triggerWeight * associatedWeight);
         }
@@ -508,7 +658,37 @@ struct HfTaskFlow {
       }
 
       corrContainer->fillEvent(multiplicity, CorrelationContainer::kCFStepReconstructed);
-      fillCorrelations(corrContainer, tracks1, tracks2, multiplicity, collision1.posZ());
+      fillCorrelations<CorrelationContainer::kCFStepReconstructed>(corrContainer, tracks1, tracks2, multiplicity, collision1.posZ());
+    }
+  }
+
+  template <typename TTracksTrig, typename TTracksAssoc, typename TLambda>
+  void mixMcCollisions(aodMcCollisions& mcCollisions, TTracksTrig& tracks1, TTracksAssoc& tracks2, TLambda getPartsSize, OutputObj<CorrelationContainer>& corrContainer, aodCollisions& collisions)
+  {
+    using BinningType = FlexibleBinningPolicy<std::tuple<decltype(getPartsSize)>, aod::McCollision::PosZ, decltype(getPartsSize)>;
+    BinningType binningWithTracksSize{{getPartsSize}, {axisVertex, axisMultiplicity}, true};
+
+    auto tracksTuple = std::make_tuple(tracks1, tracks2);
+    Pair<aodMcCollisions, TTracksTrig, TTracksAssoc, BinningType> pair{binningWithTracksSize, nMixedEvents, -1, mcCollisions, tracksTuple};
+
+    for (auto& [collision1, tracks1, collision2, tracks2] : pair) {
+
+      //  TODO: remove mcCollisions which don't have any reconstructed collision
+      registry.fill(HIST("mixedMcTpcMftHH/hMultiplicityAllMcParticles"), getPartsSize(collision1));
+
+      auto binningValues = binningWithTracksSize.getBinningValues(collision1, mcCollisions);
+      int bin = binningWithTracksSize.getBin(binningValues);
+
+      // get multiplicity of charged hadrons, which is used for slicing in mixing
+      const auto multiplicity = fillMcParticleQA(tracks1, false);
+      const auto vz = collision1.posZ();
+
+      registry.fill(HIST("hEventCountMcMixing"), bin);
+      fillMcMixingQA(multiplicity, vz, tracks1);
+      fillMcMixingMftQA(tracks1);
+
+      corrContainer->fillEvent(multiplicity, CorrelationContainer::kCFStepVertex);
+      fillCorrelations<CorrelationContainer::kCFStepVertex>(corrContainer, tracks1, tracks2, multiplicity, collision1.posZ());
     }
   }
 
@@ -532,7 +712,7 @@ struct HfTaskFlow {
 
     sameTpcTpcHH->fillEvent(multiplicity, CorrelationContainer::kCFStepReconstructed);
     fillQA(multiplicity, tracks);
-    fillCorrelations(sameTpcTpcHH, tracks, tracks, multiplicity, collision.posZ());
+    fillCorrelations<CorrelationContainer::kCFStepReconstructed>(sameTpcTpcHH, tracks, tracks, multiplicity, collision.posZ());
   }
   PROCESS_SWITCH(HfTaskFlow, processSameTpcTpcHH, "Process same-event correlations for h-h case", true);
 
@@ -553,7 +733,7 @@ struct HfTaskFlow {
 
     sameTpcTpcHfH->fillEvent(multiplicity, CorrelationContainer::kCFStepReconstructed);
     fillCandidateQA(candidates);
-    fillCorrelations(sameTpcTpcHfH, candidates, tracks, multiplicity, collision.posZ());
+    fillCorrelations<CorrelationContainer::kCFStepReconstructed>(sameTpcTpcHfH, candidates, tracks, multiplicity, collision.posZ());
   }
   PROCESS_SWITCH(HfTaskFlow, processSameTpcTpcHfH, "Process same-event correlations for HF-h case", true);
 
@@ -574,7 +754,7 @@ struct HfTaskFlow {
 
     sameTpcMftHH->fillEvent(multiplicity, CorrelationContainer::kCFStepReconstructed);
     fillMFTQA(multiplicity, mfttracks);
-    fillCorrelations(sameTpcMftHH, tracks, mfttracks, multiplicity, collision.posZ());
+    fillCorrelations<CorrelationContainer::kCFStepReconstructed>(sameTpcMftHH, tracks, mfttracks, multiplicity, collision.posZ());
   }
   PROCESS_SWITCH(HfTaskFlow, processSameTpcMftHH, "Process same-event correlations for h-MFT case", true);
 
@@ -630,6 +810,62 @@ struct HfTaskFlow {
     mixCollisions(collisions, tracks, mfttracks, getTracksSize, mixedTpcMftHH);
   }
   PROCESS_SWITCH(HfTaskFlow, processMixedTpcMftHH, "Process mixed-event correlations for h-MFT case", true);
+
+  // =====================================
+  //    Monte Carlo: process same event correlations: h-MFT case
+  // =====================================
+  //  TODO: do partitions to select particles in TPC or MFT acceptance
+  void processMcSameTpcMftHH(aodMcCollisions::iterator const& mcCollision,
+                             aod::McParticles const& mcParticles,
+                             aodCollisions const& collisions)
+  {
+    if (collisions.size() == 0) {
+      return;
+    }
+
+    registry.fill(HIST("sameMcTpcMftHH/hVtxZ"), mcCollision.posZ());
+
+    const auto multiplicity = fillMcParticleQA(mcParticles, true);
+    fillMcParticleMftQA(mcParticles, true);
+    sameTpcMftHH->fillEvent(multiplicity, CorrelationContainer::kCFStepVertex);
+    fillCorrelations<CorrelationContainer::kCFStepVertex>(sameTpcMftHH, mcParticles, mcParticles, multiplicity, mcCollision.posZ());
+  }
+  PROCESS_SWITCH(HfTaskFlow, processMcSameTpcMftHH, "Process MC same-event correlations for h-MFT case", true);
+
+  // =====================================
+  //    Monte Carlo: process mixed event correlations: h-MFT case
+  // =====================================
+  void processMcMixedTpcMftHH(aodMcCollisions& mcCollisions,
+                              aod::McParticles& mcParticles,
+                              aodCollisions& collisions)
+  {
+    //  we want to group collisions based on charged-track multiplicity
+    auto getTracksSize = [&mcParticles](aodMcCollisions::iterator const& col) {
+      auto associatedTracks = mcParticles.sliceByCached(o2::aod::mcparticle::mcCollisionId, col.globalIndex()); // it's cached, so slicing/grouping happens only once
+      int nParticles = 0;
+      for (auto mcParticle : associatedTracks) {
+        //  MC particle has to be primary
+        if (!mcParticle.isPhysicalPrimary()) {
+          continue;
+        }
+        //  MC particle pt
+        if (mcParticle.pt() < 0.2) {
+          continue;
+        }
+        //  MC particle eta, either within TPC or MFT acceptance
+        if (mcParticle.eta() < -0.8 || mcParticle.eta() > 0.8) {
+          continue;
+        }
+        nParticles++;
+      }
+      //auto size = associatedTracks.size();
+      auto size = nParticles;
+      return size;
+    };
+
+    mixMcCollisions(mcCollisions, mcParticles, mcParticles, getTracksSize, mixedTpcMftHH, collisions);
+  }
+  PROCESS_SWITCH(HfTaskFlow, processMcMixedTpcMftHH, "Process MC mixed-event correlations for h-MFT case", true);
 
 };
 
