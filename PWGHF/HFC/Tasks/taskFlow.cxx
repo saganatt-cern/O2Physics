@@ -71,6 +71,7 @@ struct HfTaskFlow {
   //  FIXME: The filter is applied also on the candidates! Beware!
   Filter collisionVtxZFilter = nabs(aod::collision::posZ) < zVertexMax;
   using aodCollisions = soa::Filtered<soa::Join<aod::Collisions, aod::EvSels, aod::Mults>>;
+  using aodLabelCollisions = soa::Filtered<soa::Join<aod::Collisions, aod::McCollisionLabels, aod::EvSels, aod::Mults>>;
 
   //  Charged track filters
   Filter trackFilter = (nabs(aod::track::eta) < etaTrackAssocMax) &&
@@ -134,6 +135,7 @@ struct HfTaskFlow {
     registry.add("sameTpcTpcHfH/hMultiplicity", "hMultiplicity", {HistType::kTH1F, {{500, 0, 500}}});
     registry.add("sameTpcTpcHfH/hVtxZ", "hVtxZ", {HistType::kTH1F, {{400, -50, 50}}});
     registry.add("sameTpcMftHH/hMultiplicity", "hMultiplicity", {HistType::kTH1F, {{500, 0, 500}}});
+    registry.add("sameTpcMftHH/hMCMultiplicity", "hMultiplicity", {HistType::kTH1F, {{500, 0, 500}}});
     registry.add("sameTpcMftHH/hVtxZ", "hVtxZ", {HistType::kTH1F, {{400, -50, 50}}});
     registry.add("sameTpcMftHH/hNtracks", "hNtracks", {HistType::kTH1F, {{500, 0, 500}}});
 
@@ -810,6 +812,37 @@ struct HfTaskFlow {
     mixCollisions(collisions, tracks, mfttracks, getTracksSize, mixedTpcMftHH);
   }
   PROCESS_SWITCH(HfTaskFlow, processMixedTpcMftHH, "Process mixed-event correlations for h-MFT case", true);
+
+  // =====================================
+  //    Monte Carlo reconstructed: process same event correlations: h-MFT case
+  // =====================================
+  Preslice<aod::McParticles> perMcCollision = aod::mcparticle::mcCollisionId;
+  void processMcRecoSameTpcMftHH(aodLabelCollisions::iterator const& collision,
+                                aodTracks const& tracks,
+                                aod::MFTTracks const& mfttracks,
+                                aod::McParticles const& mcParticles)
+  {
+    if (!(isCollisionSelected(collision, false))) {
+      return;
+    }
+
+    //  calculate MCgen multiplicity, which will be used as Nch axis in the containers
+    if (collision.mcCollisionId() < 0) {
+      return;
+    }
+    auto groupedParticles = mcParticles.sliceBy(perMcCollision, collision.mcCollisionId());
+    const auto mcMultiplicity = fillMcParticleQA(groupedParticles, false);
+    registry.fill(HIST("sameTpcMftHH/hMCMultiplicity"), mcMultiplicity);
+
+    const auto multiplicity = tracks.size();
+    registry.fill(HIST("sameTpcMftHH/hMultiplicity"), multiplicity);
+    registry.fill(HIST("sameTpcMftHH/hVtxZ"), collision.posZ());
+
+    sameTpcMftHH->fillEvent(multiplicity, CorrelationContainer::kCFStepReconstructed);
+    fillMFTQA(multiplicity, mfttracks);
+    fillCorrelations<CorrelationContainer::kCFStepReconstructed>(sameTpcMftHH, tracks, mfttracks, multiplicity, collision.posZ());
+  }
+  PROCESS_SWITCH(HfTaskFlow, processMcRecoSameTpcMftHH, "Process MCreconstructed with labels same-event correlations for h-MFT case", true);
 
   // =====================================
   //    Monte Carlo: process same event correlations: h-MFT case
